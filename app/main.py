@@ -1,21 +1,30 @@
-import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
+from config import settings
 from fastapi import FastAPI
+from loguru import logger
+from models.llm import llm_chain
 from openai import AsyncOpenAI
 
-load_dotenv()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    logger.info("Starting up...")
+    yield
+    logger.info("Shutting down...")
 
-openai_api_key = os.getenv("OPENAI_API_KEY")
-async_client = AsyncOpenAI(api_key=openai_api_key)
+app = FastAPI(lifespan=lifespan)
+
+async_client = AsyncOpenAI(api_key=settings.openai_api_key)
 system_prompt = "You are a helpful assistant."
 
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello, World!"}
+    return {"Key": settings.openai_api_key, 
+            "Organization": settings.openai_organization}
+
 
 @app.get("/chat")
 async def chat_controller(prompt: str = "Inspire me"):
@@ -29,20 +38,6 @@ async def chat_controller(prompt: str = "Inspire me"):
     content = response.choices[0].message.content
     return {"statement": content}
 
-blood_test_names = [
-    ("Гемоглобин", "HGB"),
-    ("Лейкоциты", "WBC"),
-    ("Эритроциты", "RBC"),
-    ("Тромбоциты", "PLT"),
-    ("Нейтрофилы", "NEUT%"),
-    ("Нейтрофилы (абс. кол-во)", "NEUT#"),
-    ("Лимфоциты", "LYM%"),
-    ("Лимфоциты (абс. кол-во)", "LYM#"),
-    ("Моноциты", "MON%"),
-    ("Моноциты (абс. кол-во)", "MON#"),
-    ("Эозинофилы", "EOS%"),
-    ("Эозинофилы (абс. кол-во)", "EOS#"),
-    ("Базофилы", "BAS%"),
-    ("Базофилы (абс. кол-во)", "BAS#"),
-]
-
+@app.get("/generate/text")
+def serve_language_model_controller(prompt: str) -> str:
+    return llm_chain.invoke({"input": prompt})["text"]
