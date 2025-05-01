@@ -1,11 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from config import settings
 from fastapi import FastAPI
 from loguru import logger
-from models.llm import llm_chain
 from openai import AsyncOpenAI
+
+from src.middlewares import monitor_service
+from src.settings import settings
 
 
 @asynccontextmanager
@@ -15,6 +16,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info("Shutting down...")
 
 app = FastAPI(lifespan=lifespan)
+app.middleware("http")(monitor_service)
 
 async_client = AsyncOpenAI(api_key=settings.openai_api_key)
 system_prompt = "You are a helpful assistant."
@@ -38,6 +40,9 @@ async def chat_controller(prompt: str = "Inspire me"):
     content = response.choices[0].message.content
     return {"statement": content}
 
-@app.get("/generate/text")
-def serve_language_model_controller(prompt: str) -> str:
-    return llm_chain.invoke({"input": prompt})["text"]
+# @app.get("/generate/text")
+# def generate_text_controller(prompt: str):
+#     logger.info(f"Prompt: {prompt}")
+#     print(settings.openai_key)
+#     print(settings.openai_organization)
+#     return llm_chain.run(prompt)
