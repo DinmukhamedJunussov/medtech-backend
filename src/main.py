@@ -6,6 +6,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from src.middlewares import monitor_service
+from src.schemas.blood_results import BloodTestResults
 from src.settings import settings
 
 
@@ -39,6 +40,12 @@ async def chat_controller(prompt: str = "Inspire me"):
     )
     content = response.choices[0].message.content
     return {"statement": content}
+
+@app.post("/blood-results")
+async def blood_results_controller(results: BloodTestResults):
+    # Индекс системного иммунного воспаления
+    SII = results.neutrophils_absolute * results.platelets / results.white_blood_cells
+    return {"SII": SII}
 
 # @app.get("/generate/text")
 # def generate_text_controller(prompt: str):
