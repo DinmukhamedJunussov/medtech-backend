@@ -26,6 +26,7 @@ async def monitor_service(
     logger.info(
         "Request info: "
         f"Request id: {request_id}, "
+        f"Request method: {req.method}, "
         f"Request datetime: {request_datetime}, "
         f"Endpoint triggered: {req.url}, "
         f"Client IP Address: {req.client.host if req.client else 'Unknown'}, "

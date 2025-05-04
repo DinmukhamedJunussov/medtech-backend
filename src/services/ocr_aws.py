@@ -1,12 +1,10 @@
-# AWS Textract OCR handling
-
 import boto3
-from botocore.exceptions import ClientError
 
+textract_client = boto3.client('textract', region_name='us-east-1')
 
-class OcrAws:
-    def __init__(self):
-        self.client = boto3.client('textract')
-
-    def process_image(self, image_path):
-        pass
+async def analyze_document(file_bytes):
+    response = textract_client.analyze_document(
+        Document={'Bytes': file_bytes},
+        FeatureTypes=['TABLES']
+    )
+    return response
