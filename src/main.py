@@ -8,8 +8,10 @@ import ast
 from datetime import datetime
 from src.middlewares import monitor_service
 from src.models.llm import system_prompt
-from src.schemas.blood_results import BloodTestResults, blood_test_names
+from src.schemas.blood_results import BloodTestResults, blood_test_names, BloodTestInput, SIIResult
+from src.services.helper import convert_lab_results, interpret_sii
 from src.services.ocr_aws import analyze_document
+from src.services.sii_category import get_sii_category
 from src.settings import settings
 from typing import Dict
 import fitz  # PyMuPDF
@@ -32,6 +34,7 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost:3000",
     "*.lovable.app",
+    "*.ngrok-free.app"
 ]
 
 app.add_middleware(
@@ -50,7 +53,7 @@ handler = Mangum(app)
 
 @app.get("/")
 def read_root():
-    return {"Fact": "Dimash, you are doing great. Just imagine what you can achieve, if you continue putting effort"
+    return {"Fact": "Dimash, you are doing great. Just imagine what you can achieve, if you continue putting effort "
                      "every day for the next 30 years"}
 
 # def extract_values(text: str) -> Dict[str, str]:
@@ -86,20 +89,20 @@ def read_root():
 #     return values
 
 BLOOD_TEST_MAP = {
-    "Гемоглобин": r"Гемоглобин\s+[A-Z]*\s*([\d.,]+)",
-    "Лейкоциты": r"Лейкоциты\s+[A-Z]*\s*([\d.,]+)",
-    "Эритроциты": r"Эритроциты\s+[A-Z]*\s*([\d.,]+)",
-    "Тромбоциты": r"Тромбоциты\s+[A-Z]*\s*([\d.,]+)",
-    "Нейтрофилы %": r"Нейтрофилы\s*NEU%\s*([\d.,]+)",
-    "Нейтрофилы #": r"Нейтрофилы\s*\(абс. кол-во\)\s*NEU#\s*([\d.,]+)",
-    "Лимфоциты %": r"Лимфоциты\s*LYM%\s*([\d.,]+)",
-    "Лимфоциты #": r"Лимфоциты\s*\(абс. кол-во\)\s*LYM#\s*([\d.,]+)",
-    "Моноциты %": r"Моноциты\s*MON%\s*([\d.,]+)",
-    "Моноциты #": r"Моноциты\s*\(абс. кол-во\)\s*MON#\s*([\d.,]+)",
-    "Эозинофилы %": r"Эозинофилы\s*EOS%\s*([\d.,]+)",
-    "Эозинофилы #": r"Эозинофилы\s*\(абс. кол-во\)\s*EOS#\s*([\d.,]+)",
-    "Базофилы %": r"Базофилы\s*BAS%\s*([\d.,]+)",
-    "Базофилы #": r"Базофилы\s*\(абс. кол-во\)\s*BAS#\s*([\d.,]+)",
+    "hemoglobin": r"Гемоглобин\s+[A-Z]*\s*([\d.,]+)",
+    "white_blood_cells": r"Лейкоциты\s+[A-Z]*\s*([\d.,]+)",
+    "red_blood_cells": r"Эритроциты\s+[A-Z]*\s*([\d.,]+)",
+    "platelets": r"Тромбоциты\s+[A-Z]*\s*([\d.,]+)",
+    "neutrophils_percent": r"Нейтрофилы\s*NEU%\s*([\d.,]+)",
+    "neutrophils_absolute": r"Нейтрофилы\s*\(абс. кол-во\)\s*NEU#\s*([\d.,]+)",
+    "lymphocytes_percent": r"Лимфоциты\s*LYM%\s*([\d.,]+)",
+    "lymphocytes_absolute": r"Лимфоциты\s*\(абс. кол-во\)\s*LYM#\s*([\d.,]+)",
+    "monocytes_percent": r"Моноциты\s*MON%\s*([\d.,]+)",
+    "monocytes_absolute": r"Моноциты\s*\(абс. кол-во\)\s*MON#\s*([\d.,]+)",
+    "eosinophils_percent": r"Эозинофилы\s*EOS%\s*([\d.,]+)",
+    "eosinophils_absolute": r"Эозинофилы\s*\(абс. кол-во\)\s*EOS#\s*([\d.,]+)",
+    "basophils_percent": r"Базофилы\s*BAS%\s*([\d.,]+)",
+    "basophils_absolute": r"Базофилы\s*\(абс. кол-во\)\s*BAS#\s*([\d.,]+)",
 }
 
 def extract_values(text: str):
@@ -125,86 +128,85 @@ async def parse_blood_test(file: UploadFile = File(...)):
     values = extract_values(text)
     return values
 
-@app.get("/chat")
-async def chat_controller(prompt: str = "Inspire me"):
-    response = await async_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": f"{system_prompt}"},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    content = response.choices[0].message.content
-    return {"statement": content}
+# @app.get("/chat")
+# async def chat_controller(prompt: str = "Inspire me"):
+#     response = await async_client.chat.completions.create(
+#         model="gpt-4o",
+#         messages=[
+#             {"role": "system", "content": f"{system_prompt}"},
+#             {"role": "user", "content": prompt},
+#         ],
+#     )
+#     content = response.choices[0].message.content
+#     return {"statement": content}
 
 @app.post("/blood-results")
-async def blood_results_controller(results: BloodTestResults):
+async def blood_results_controller(data: BloodTestInput):
     # Индекс системного иммунного воспаления
-    SII = results.neutrophils_absolute * results.platelets / results.white_blood_cells
-    system_prompt = ("You are doctor. User will provide Systemic Immune Inflammation Index - SII value. Based SII value"
-                     "return recommendation."
-                     "Following is the reseach info you can rely on before giving recommendations:"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8519535/ Индекс системного иммунного воспаления является "
-                     "многообещающим неинвазивным биомаркером для прогнозирования выживаемости при раке мочевой системы:"
-                     "систематический обзор и метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9814343/ Прогностическая значимость индекса системного иммунного"
-                     "воспаления до лечения у пациентов с раком предстательной железы: метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9898902/ Прогностическое значение индекса системного иммунного"
-                     "воспаления до лечения у пациентов с раком предстательной железы: систематический обзор и метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7552553/ Прогностическое значение индекса системного иммунного"
-                     "воспаления у больных урологическими онкологическими заболеваниями: метаанализ"
-                     "https://www.europeanreview.org/article/24834 Прогностическое значение индекса системного иммунного воспаления у"
-                     "больных раком мочевой системы: метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6370019/"
-                     "Индекс системного иммунного воспаления является многообещающим неинвазивным маркером для"
-                     "прогнозирования выживаемости при раке легких: Метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8854201/"
-                     "Прогностическое значение индекса системного иммунного воспаления (SII) у больных мелкоклеточным раком"
-                     "легкого: метаанализ"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9280894/"
-                     "Взаимосвязь между индексом системного иммунного воспаления и прогнозом у пациентов с немелкоклеточным"
-                     "раком легкого: метаанализ и систематический обзор"
-                     "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8436945/ Прогностическое и клинико-патологическое значение индекса"
-                     "системного иммунного воспаления при раке поджелудочной железы: метаанализ 2365 пациентов")
+    sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
+    level, interpretation = interpret_sii(sii)
+    return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
+    # # Пример использования:
+    # category = get_sii_category(SII)
+    # logger.info(f"Категория: {category.emoji} {category.category}")
+    # logger.info(f"Диапазон: {category.range_description}")
+    # logger.info(f"Описание: {category.description}")
+    # return {"SII": SII, "category": category}
 
-    response = await async_client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": f"{system_prompt}"},
-            {"role": "user", "content": str(SII)},
-        ],
-    )
+# @app.post("/blood-results")
+# async def blood_results_controller(results: BloodTestResults):
+#     # Индекс системного иммунного воспаления
+#     SII = results.neutrophils_absolute * results.platelets / results.white_blood_cells
+#     system_prompt = ("You are doctor. User will provide Systemic Immune Inflammation Index - SII value. Based SII value"
+#                      "return recommendation."
+#                      "Following is the reseach info you can rely on before giving recommendations:"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8519535/ Индекс системного иммунного воспаления является "
+#                      "многообещающим неинвазивным биомаркером для прогнозирования выживаемости при раке мочевой системы:"
+#                      "систематический обзор и метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9814343/ Прогностическая значимость индекса системного иммунного"
+#                      "воспаления до лечения у пациентов с раком предстательной железы: метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9898902/ Прогностическое значение индекса системного иммунного"
+#                      "воспаления до лечения у пациентов с раком предстательной железы: систематический обзор и метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7552553/ Прогностическое значение индекса системного иммунного"
+#                      "воспаления у больных урологическими онкологическими заболеваниями: метаанализ"
+#                      "https://www.europeanreview.org/article/24834 Прогностическое значение индекса системного иммунного воспаления у"
+#                      "больных раком мочевой системы: метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6370019/"
+#                      "Индекс системного иммунного воспаления является многообещающим неинвазивным маркером для"
+#                      "прогнозирования выживаемости при раке легких: Метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8854201/"
+#                      "Прогностическое значение индекса системного иммунного воспаления (SII) у больных мелкоклеточным раком"
+#                      "легкого: метаанализ"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9280894/"
+#                      "Взаимосвязь между индексом системного иммунного воспаления и прогнозом у пациентов с немелкоклеточным"
+#                      "раком легкого: метаанализ и систематический обзор"
+#                      "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8436945/ Прогностическое и клинико-патологическое значение индекса"
+#                      "системного иммунного воспаления при раке поджелудочной железы: метаанализ 2365 пациентов")
 
-    return {"statement": response.choices[0].message.content}
+#     response = await async_client.chat.completions.create(
+#         model="gpt-4.1-mini",
+#         messages=[
+#             {"role": "system", "content": f"{system_prompt}"},
+#             {"role": "user", "content": str(SII)},
+#         ],
+#     )
 
-@app.post("/analyze")
-async def analyze_endpoint(file: UploadFile = File(...)):
-    contents = await file.read()
-    result = await analyze_document(contents)
-    system_prompt = (f"You are a doctor. You will be given blood test results. "
-                     f"Your task is to find out 14 values for the: Гемоглобин, Лейкоциты, Эритроциты, Тромбоциты, "
-                     f"Нейтрофилы %, Нейтрофилы #, Лимфоциты %, Лимфоциты #, Моноциты %, Моноциты #, Эозинофилы %, "
-                     f"Эозинофилы #, Базофилы %, Базофилы #")
-
-    response = await async_client.beta.chat.completions.parse(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": f"{system_prompt}"},
-            {"role": "user", "content": [result]},
-        ],
-        response_format=BloodTestResults
-    )
-    message = response.choices[0].message
-    return message.parsed if message.parsed is not None else message.refusal
-
-    # content = response.choices[0].message.content
-    #
-    # return content
+#     return {"statement": response.choices[0].message.content}
 
 
-# @app.get("/generate/text")
-# def generate_text_controller(prompt: str):
-#     logger.info(f"Prompt: {prompt}")
-#     print(settings.openai_key)
-#     print(settings.openai_organization)
-#     return llm_chain.run(prompt)
+# {
+#   "hemoglobin": 138,
+#   "white_blood_cells": 3.74,
+#   "red_blood_cells": 4.57,
+#   "platelets": 207,
+#   "neutrophils_percent": 57.7,
+#   "neutrophils_absolute": 2.16,
+#   "lymphocytes_percent": 29.4,
+#   "lymphocytes_absolute": 1.1,
+#   "monocytes_percent": 11,
+#   "monocytes_absolute": 0.41,
+#   "eosinophils_percent": 1.6,
+#   "eosinophils_absolute": 0.06,
+#   "basophils_percent": 0.3,
+#   "basophils_absolute": 0.01
+# }
