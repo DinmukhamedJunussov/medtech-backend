@@ -1,26 +1,32 @@
+import ast
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, File, UploadFile
-from loguru import logger
-from openai import AsyncOpenAI
-import ast
 from datetime import datetime
+from typing import Dict, Optional, Tuple
+
+import fitz  # PyMuPDF
+import pdfplumber
+from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from loguru import logger
+from mangum import Mangum
+from openai import AsyncOpenAI
+from rapidfuzz import process
+
 from src.middlewares import monitor_service
 from src.models.llm import system_prompt
-from src.schemas.blood_results import BloodTestResults, blood_test_names, BloodTestInput, SIIResult
+from src.schemas.blood_results import (
+    BloodTestInput,
+    BloodTestResults,
+    SIIResult,
+    blood_test_names,
+)
 from src.services.helper import convert_lab_results, interpret_sii
 from src.services.ocr_aws import analyze_document
 from src.services.sii_category import get_sii_category
 from src.settings import settings
-from typing import Dict
-import fitz  # PyMuPDF
-import re
-from fastapi.responses import JSONResponse
-import pdfplumber
-from rapidfuzz import process
-from typing import Optional, Tuple
-from mangum import Mangum
 
 
 @asynccontextmanager
@@ -34,7 +40,9 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost:3000",
     "*.lovable.app",
-    "*.ngrok-free.app"
+    "*.ngrok-free.app",
+    "medtech-frontend.vercel.app",
+    "https://medtech-frontend.vercel.app"
 ]
 
 app.add_middleware(
@@ -126,6 +134,7 @@ async def parse_blood_test(file: UploadFile = File(...)):
     with pdfplumber.open(file.file) as pdf:
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
     values = extract_values(text)
+    logger.info(f"Received blood test input: {values}")
     return values
 
 # @app.get("/chat")
@@ -141,8 +150,11 @@ async def parse_blood_test(file: UploadFile = File(...)):
 #     return {"statement": content}
 
 @app.post("/blood-results")
-async def blood_results_controller(data: BloodTestInput):
+async def blood_results_controller(data: BloodTestResults):
     # Индекс системного иммунного воспаления
+    logger.info(f"Received blood test input: {data}")
+    print(data)
+
     sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
     level, interpretation = interpret_sii(sii)
     return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
