@@ -44,7 +44,8 @@ origins = [
     "medtech-frontend.vercel.app",
     "https://medtech-frontend.vercel.app",
     "https://www.oncotest.kz",
-    "*oncotest.kz"
+    "*oncotest.kz",
+    "*amazonaws.com"
 ]
 
 app.add_middleware(
