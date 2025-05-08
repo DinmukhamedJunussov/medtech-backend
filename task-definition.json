@@ -1,0 +1,34 @@
+{
+    "family": "medtech-backend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::324555144366:role/ecsTaskExecutionRole",
+    "containerDefinitions": [
+        {
+            "name": "medtech-backend",
+            "image": "324555144366.dkr.ecr.us-east-1.amazonaws.com/medtech-backend:latest",
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "OPENAI_API_KEY",
+                    "value": "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"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/medtech-backend",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ]
+} 
