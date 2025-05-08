@@ -42,7 +42,9 @@ origins = [
     "*.lovable.app",
     "*.ngrok-free.app",
     "medtech-frontend.vercel.app",
-    "https://medtech-frontend.vercel.app"
+    "https://medtech-frontend.vercel.app",
+    "https://www.oncotest.kz",
+    "*oncotest.kz"
 ]
 
 app.add_middleware(
