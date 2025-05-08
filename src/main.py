@@ -39,13 +39,13 @@ app = FastAPI(lifespan=lifespan)
 # Allow your frontend origin (e.g., http://localhost:3000)
 origins = [
     "http://localhost:3000",
-    "*.lovable.app",
-    "*.ngrok-free.app",
-    "medtech-frontend.vercel.app",
+    "https://localhost:3000",
+    "http://medtech-frontend.vercel.app",
     "https://medtech-frontend.vercel.app",
+    "http://www.oncotest.kz",
     "https://www.oncotest.kz",
-    "*oncotest.kz",
-    "*amazonaws.com"
+    "http://oncotest.kz",
+    "https://oncotest.kz"
 ]
 
 app.add_middleware(
