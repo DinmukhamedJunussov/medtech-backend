@@ -7,7 +7,7 @@ from typing import Dict, Optional, Tuple
 
 import fitz  # PyMuPDF
 import pdfplumber
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -45,15 +45,17 @@ origins = [
     "http://www.oncotest.kz",
     "https://www.oncotest.kz",
     "http://oncotest.kz",
-    "https://oncotest.kz"
+    "https://oncotest.kz",
+    "http://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
+    "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # origins,  # or ["*"] to allow all
+    allow_origins=origins,  # Используем список разрешенных доменов
     allow_credentials=True,
-    allow_methods=["*"],  # or specify ["GET", "POST"]
-    allow_headers=["*"],  # or specify ["Authorization", "Content-Type"]
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.middleware("http")(monitor_service)
@@ -156,17 +158,24 @@ async def parse_blood_test(file: UploadFile = File(...)):
 async def blood_results_controller(data: BloodTestResults):
     # Индекс системного иммунного воспаления
     logger.info(f"Received blood test input: {data}")
-    print(data)
-
-    sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
-    level, interpretation = interpret_sii(sii)
-    return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
-    # # Пример использования:
-    # category = get_sii_category(SII)
-    # logger.info(f"Категория: {category.emoji} {category.category}")
-    # logger.info(f"Диапазон: {category.range_description}")
-    # logger.info(f"Описание: {category.description}")
-    # return {"SII": SII, "category": category}
+    
+    try:
+        # Проверяем наличие необходимых значений
+        if data.neutrophils_absolute is None or data.platelets is None or data.lymphocytes_absolute is None:
+            raise ValueError("Отсутствуют необходимые значения для расчета SII")
+            
+        if data.lymphocytes_absolute == 0:
+            raise ValueError("Значение лимфоцитов (абс.) не может быть нулевым")
+            
+        sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
+        level, interpretation = interpret_sii(sii)
+        return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
+    except Exception as e:
+        logger.error(f"Error in blood_results_controller: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 # @app.post("/blood-results")
 # async def blood_results_controller(results: BloodTestResults):
