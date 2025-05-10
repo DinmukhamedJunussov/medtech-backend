@@ -26,6 +26,24 @@ CBC_MAPPING = {
     "базофилы, абс.": "basophils_absolute",
 }
 
+# Маппинг для Olymp Labs
+OLYMP_CBC_MAPPING = {
+    "гемоглобин": "hemoglobin",
+    "лейкоциты": "white_blood_cells",
+    "эритроциты": "red_blood_cells",
+    "тромбоциты": "platelets",
+    "нейтрофилы": "neutrophils_percent",
+    "нейтрофилы абс.": "neutrophils_absolute",
+    "лимфоциты": "lymphocytes_percent",
+    "лимфоциты абс.": "lymphocytes_absolute",
+    "моноциты": "monocytes_percent",
+    "моноциты абс.": "monocytes_absolute",
+    "эозинофилы": "eosinophils_percent",
+    "эозинофилы абс.": "eosinophils_absolute",
+    "базофилы": "basophils_percent",
+    "базофилы абс.": "basophils_absolute",
+}
+
 def extract_text_pages(pdf_bytes: bytes) -> list[str]:
     pages = []
     try:
@@ -58,20 +76,62 @@ def clean_float(val):
     except Exception:
         return None
 
+def detect_lab_type(pages: list[str]) -> str:
+    """
+    Определяет формат лаборатории на основе содержимого PDF
+    
+    Args:
+        pages: Список строк с текстом из PDF
+        
+    Returns:
+        str: "invitro" или "olymp"
+    """
+    for page in pages:
+        page_lower = page.lower()
+        if "инвитро" in page_lower or "invitro" in page_lower:
+            return "invitro"
+        if "олимп" in page_lower or "olymp" in page_lower:
+            return "olymp"
+    
+    # По умолчанию предполагаем Invitro, так как это основной формат
+    return "invitro"
+
 def extract_meta(text: str) -> dict:
     meta = {}
+    # Формат для Invitro
     d = re.search(r"Үлгі алынған күні.*?(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})", text)
     if d:
         try:
             meta['test_date'] = datetime.strptime(d.group(1), "%d.%m.%Y %H:%M")
         except Exception:
             pass
+    
+    # Формат для Olymp Labs
+    if not meta.get('test_date'):
+        d_olymp = re.search(r"Дата взятия.*?(\d{2}\.\d{2}\.\d{4})", text)
+        if d_olymp:
+            try:
+                meta['test_date'] = datetime.strptime(d_olymp.group(1), "%d.%m.%Y")
+            except Exception:
+                pass
+    
+    # Идентификатор пациента для Invitro
     i = re.search(r"ИНЗ:\s*(\d+)", text)
     if i:
         try:
             meta['patient_id'] = int(i.group(1))
         except Exception:
             pass
+    
+    # Идентификатор пациента для Olymp
+    if not meta.get('patient_id'):
+        i_olymp = re.search(r"N заказа:?\s*(\d+)", text)
+        if i_olymp:
+            try:
+                meta['patient_id'] = int(i_olymp.group(1))
+            except Exception:
+                pass
+            
     return meta
 
 CBC_PATTERNS = [
@@ -101,6 +161,10 @@ def extract_cbc_values(pages: list[str]) -> dict:
     This robustly handles: 'Лимфоциты, абс. 1.44 1.67 10.05.24 ...'
     """
     result = {}
+    
+    # Определяем формат лаборатории
+    lab_type = detect_lab_type(pages)
+    
     # Map CBC fields to Russian analyte name (prefix)
     prefix_map = [
         ('hemoglobin', 'Гемоглобин'),
@@ -118,6 +182,26 @@ def extract_cbc_values(pages: list[str]) -> dict:
         ('basophils_percent', 'Базофилы, %'),
         ('basophils_absolute', 'Базофилы, абс.')
     ]
+    
+    # Используем другой маппинг для Olymp
+    if lab_type == "olymp":
+        prefix_map = [
+            ('hemoglobin', 'Гемоглобин'),
+            ('white_blood_cells', 'Лейкоциты'),
+            ('red_blood_cells', 'Эритроциты'),
+            ('platelets', 'Тромбоциты'),
+            ('neutrophils_percent', 'Нейтрофилы'),
+            ('neutrophils_absolute', 'Нейтрофилы абс.'),
+            ('lymphocytes_percent', 'Лимфоциты'),
+            ('lymphocytes_absolute', 'Лимфоциты абс.'),
+            ('monocytes_percent', 'Моноциты'),
+            ('monocytes_absolute', 'Моноциты абс.'),
+            ('eosinophils_percent', 'Эозинофилы'),
+            ('eosinophils_absolute', 'Эозинофилы абс.'),
+            ('basophils_percent', 'Базофилы'),
+            ('basophils_absolute', 'Базофилы абс.')
+        ]
+    
     # For flexibility, also try alternative labels for fields
     alt_labels = {
         'neutrophils_percent': ['Нейтрофилы (общ.число), %', 'Нейтрофилы, %', 'Нейтрофилы %', 'Нейтрофилы'],
@@ -128,6 +212,17 @@ def extract_cbc_values(pages: list[str]) -> dict:
         'basophils_absolute': ['Базофилы, абс.', 'Базофилы абс.', 'Базофилы, абс', 'Базофилы абс', 'Абсолютное число базофилов'],
     }
     
+    # Шаблоны для Olymp лабораторий
+    if lab_type == "olymp":
+        alt_labels = {
+            'neutrophils_percent': ['Нейтрофилы', 'Нейтрофилы %', 'Нейтрофилы, %'],
+            'lymphocytes_absolute': ['Лимфоциты абс.', 'Лимфоциты абсол.', 'Лимфоциты, абс', 'Абсолютное число лимфоцитов'],
+            'eosinophils_absolute': ['Эозинофилы абс.', 'Эозинофилы абсол.', 'Эозинофилы, абс', 'Абсолютное число эозинофилов'],
+            'neutrophils_absolute': ['Нейтрофилы абс.', 'Нейтрофилы абсол.', 'Нейтрофилы, абс', 'Абсолютное число нейтрофилов'],
+            'monocytes_absolute': ['Моноциты абс.', 'Моноциты абсол.', 'Моноциты, абс', 'Абсолютное число моноцитов'],
+            'basophils_absolute': ['Базофилы абс.', 'Базофилы абсол.', 'Базофилы, абс', 'Абсолютное число базофилов'],
+        }
+    
     # Регулярные выражения для извлечения значений напрямую из текста
     direct_regex = {
         'lymphocytes_absolute': r"лимфоцит.*?\s*абс.*?(\d+[.,]\d+)",
@@ -136,6 +231,21 @@ def extract_cbc_values(pages: list[str]) -> dict:
         'monocytes_absolute': r"[мМ]оноцит.*?\s*абс.*?(\d+[.,]\d+)",
         'basophils_absolute': r"[бБ]азофил.*?\s*абс.*?(\d+[.,]\d+)",
     }
+    
+    # Добавляем специальные выражения для Olymp
+    if lab_type == "olymp":
+        olymp_regex = {
+            'hemoglobin': r"(?:Гемоглобин|Hgb)\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'white_blood_cells': r"(?:Лейкоциты|WBC)\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'red_blood_cells': r"(?:Эритроциты|RBC)\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'platelets': r"(?:Тромбоциты|PLT)\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'lymphocytes_percent': r"(?:Лимфоциты|Lymph)\s*%?\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'monocytes_percent': r"(?:Моноциты|Mono)\s*%?\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'neutrophils_percent': r"(?:Нейтрофилы|Neu)\s*%?\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'eosinophils_percent': r"(?:Эозинофилы|Eo)\s*%?\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+            'basophils_percent': r"(?:Базофилы|Baso)\s*%?\s*(?:[-=:]|)\s*(\d+(?:[.,]\d+)?)",
+        }
+        direct_regex.update(olymp_regex)
     
     found_keys = set()
     
@@ -180,7 +290,7 @@ def extract_cbc_values(pages: list[str]) -> dict:
                         found_keys.add(field)
                     except:
                         pass
-    
+
     # Дополнительная обработка для самых частых ошибок - если мы видим процент, но не видим абсолютное значение
     if 'lymphocytes_percent' in result and 'lymphocytes_absolute' not in result:
         for text in pages:
@@ -209,6 +319,60 @@ def extract_cbc_values(pages: list[str]) -> dict:
                             val = match.group(1).replace(',', '.')
                             try:
                                 result['eosinophils_absolute'] = float(val)
+                            except:
+                                pass
+    
+    # Для Olymp: дополнительная обработка для абсолютных значений
+    if lab_type == "olymp":
+        # Для Olymp Labs часто значения указаны в виде таблицы, где есть значение, единица измерения и референс
+        for text in pages:
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if "абс." in line.lower():
+                    # В Olymp формате часто бывает, что абсолютные значения указаны в отдельной строке
+                    if "лимфоцит" in line.lower() and 'lymphocytes_absolute' not in found_keys:
+                        match = re.search(r"(\d+[.,]\d+)", line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['lymphocytes_absolute'] = float(val)
+                                found_keys.add('lymphocytes_absolute')
+                            except:
+                                pass
+                    elif "нейтрофил" in line.lower() and 'neutrophils_absolute' not in found_keys:
+                        match = re.search(r"(\d+[.,]\d+)", line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['neutrophils_absolute'] = float(val)
+                                found_keys.add('neutrophils_absolute')
+                            except:
+                                pass
+                    elif "моноцит" in line.lower() and 'monocytes_absolute' not in found_keys:
+                        match = re.search(r"(\d+[.,]\d+)", line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['monocytes_absolute'] = float(val)
+                                found_keys.add('monocytes_absolute')
+                            except:
+                                pass
+                    elif "эозинофил" in line.lower() and 'eosinophils_absolute' not in found_keys:
+                        match = re.search(r"(\d+[.,]\d+)", line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['eosinophils_absolute'] = float(val)
+                                found_keys.add('eosinophils_absolute')
+                            except:
+                                pass
+                    elif "базофил" in line.lower() and 'basophils_absolute' not in found_keys:
+                        match = re.search(r"(\d+[.,]\d+)", line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['basophils_absolute'] = float(val)
+                                found_keys.add('basophils_absolute')
                             except:
                                 pass
     

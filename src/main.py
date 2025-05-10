@@ -28,7 +28,7 @@ from src.services.helper import (
     extract_text_fitz,
     extract_text_pdfplumber,
     interpret_sii,
-    parse_results, extract_text_pages, extract_cbc_values, extract_meta, CBC_MAPPING,
+    parse_results, extract_text_pages, extract_cbc_values, extract_meta, CBC_MAPPING, detect_lab_type
 )
 from src.services.ocr_aws import analyze_document
 from src.services.sii_category import get_sii_category
@@ -86,6 +86,10 @@ async def parse_blood_test(file: UploadFile = File(...)):
 
     # Логируем извлечённый текст
     logger.info(f"Extracted pages: {pages}")
+    
+    # Определяем и логируем тип лаборатории
+    lab_type = detect_lab_type(pages)
+    logger.info(f"Detected lab type: {lab_type}")
 
     cbc_data = extract_cbc_values(pages)
     logger.info(f"Extracted CBC data: {cbc_data}")
