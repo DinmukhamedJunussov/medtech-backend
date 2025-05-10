@@ -9,6 +9,210 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from src.schemas.blood_results import BloodTestResults, SIILevel
 
+CBC_MAPPING = {
+    "гемоглобин": "hemoglobin",
+    "лейкоциты": "white_blood_cells",
+    "эритроциты": "red_blood_cells",
+    "тромбоциты": "platelets",
+    "нейтрофилы (общ.число), %": "neutrophils_percent",
+    "нейтрофилы, абс.": "neutrophils_absolute",
+    "лимфоциты, %": "lymphocytes_percent",
+    "лимфоциты, абс.": "lymphocytes_absolute",
+    "моноциты, %": "monocytes_percent",
+    "моноциты, абс.": "monocytes_absolute",
+    "эозинофилы, %": "eosinophils_percent",
+    "эозинофилы, абс.": "eosinophils_absolute",
+    "базофилы, %": "basophils_percent",
+    "базофилы, абс.": "basophils_absolute",
+}
+
+def extract_text_pages(pdf_bytes: bytes) -> list[str]:
+    pages = []
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                txt = page.extract_text()
+                if txt and txt.strip():
+                    pages.append(txt)
+    except Exception:
+        pass
+    if not pages:
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page in doc:
+                txt = page.get_text()
+                if txt and txt.strip():
+                    pages.append(txt)
+        except Exception:
+            pass
+    return pages
+
+def clean_float(val):
+    # Accept "1.44", "0,44", "1.44*", " 1.44 ", "1.44 1.67 10.05.24"
+    try:
+        # take first float-looking part
+        m = re.search(r"[-+]?\d*[\.,]\d+|\d+", val.replace(',', '.'))
+        if m:
+            return float(m.group(0))
+        return None
+    except Exception:
+        return None
+
+def extract_meta(text: str) -> dict:
+    meta = {}
+    d = re.search(r"Үлгі алынған күні.*?(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})", text)
+    if d:
+        try:
+            meta['test_date'] = datetime.strptime(d.group(1), "%d.%m.%Y %H:%M")
+        except Exception:
+            pass
+    i = re.search(r"ИНЗ:\s*(\d+)", text)
+    if i:
+        try:
+            meta['patient_id'] = int(i.group(1))
+        except Exception:
+            pass
+    return meta
+
+CBC_PATTERNS = [
+    ("hemoglobin",        r"Гемоглобин[^\d]*(\d+[\.,]\d+|\d+)", 0),
+    ("white_blood_cells", r"Лейкоциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
+    ("red_blood_cells",   r"Эритроциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
+    ("platelets",         r"Тромбоциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
+    ("neutrophils_percent",     r"Нейтрофилы.*(%|проц)[^\d]*(\d+[\.,]\d+|\d+)", 2),
+    ("neutrophils_percent",     r"Нейтрофилы\s*\(.*число.*\)\s*,?\s*(\d+[\.,]\d+|\d+)", 1),
+    ("neutrophils_percent",     r"Нейтрофилы[^\n]*?([-\d\.,]+)\s*%[^\S\n]*", 1),
+    # absolute matches: extract from "абс." lines. They may look like "Лимфоциты, абс. 1.44 1.67"
+    ("neutrophils_absolute",    r"Нейтрофилы[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
+    ("lymphocytes_percent",     r"Лимфоциты, %\s*(\d+[\.,]\d+|\d+)", 1),
+    ("lymphocytes_absolute",    r"Лимфоциты[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
+    ("monocytes_percent",       r"Моноциты, %\s*(\d+[\.,]\d+|\d+)", 1),
+    ("monocytes_absolute",      r"Моноциты[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
+    ("eosinophils_percent",     r"Эозинофилы, %\s*(\d+[\.,]\d+|\d+)", 1),
+    ("eosinophils_absolute",    r"Эозинофилы[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
+    ("basophils_percent",       r"Базофилы, %\s*(\d+[\.,]\d+|\d+)", 1),
+    ("basophils_absolute",      r"Базофилы[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
+]
+
+def extract_cbc_values(pages: list[str]) -> dict:
+    """
+    For every page and every line, always split the line into tokens,
+    find the analyte label by 'startswith', and take the FIRST NUMERIC value directly after (to the right).
+    This robustly handles: 'Лимфоциты, абс. 1.44 1.67 10.05.24 ...'
+    """
+    result = {}
+    # Map CBC fields to Russian analyte name (prefix)
+    prefix_map = [
+        ('hemoglobin', 'Гемоглобин'),
+        ('white_blood_cells', 'Лейкоциты'),
+        ('red_blood_cells', 'Эритроциты'),
+        ('platelets', 'Тромбоциты'),
+        ('neutrophils_percent', 'Нейтрофилы (общ.число), %'),
+        ('neutrophils_absolute', 'Нейтрофилы, абс.'),
+        ('lymphocytes_percent', 'Лимфоциты, %'),
+        ('lymphocytes_absolute', 'Лимфоциты, абс.'),
+        ('monocytes_percent', 'Моноциты, %'),
+        ('monocytes_absolute', 'Моноциты, абс.'),
+        ('eosinophils_percent', 'Эозинофилы, %'),
+        ('eosinophils_absolute', 'Эозинофилы, абс.'),
+        ('basophils_percent', 'Базофилы, %'),
+        ('basophils_absolute', 'Базофилы, абс.')
+    ]
+    # For flexibility, also try alternative labels for fields
+    alt_labels = {
+        'neutrophils_percent': ['Нейтрофилы (общ.число), %', 'Нейтрофилы, %', 'Нейтрофилы %', 'Нейтрофилы'],
+        'lymphocytes_absolute': ['Лимфоциты, абс.', 'Лимфоциты абс.', 'Лимфоциты, абс', 'Лимфоциты абс', 'Абсолютное число лимфоцитов'],
+        'eosinophils_absolute': ['Эозинофилы, абс.', 'Эозинофилы абс.', 'Эозинофилы, абс', 'Эозинофилы абс', 'Абсолютное число эозинофилов'],
+        'neutrophils_absolute': ['Нейтрофилы, абс.', 'Нейтрофилы абс.', 'Нейтрофилы, абс', 'Нейтрофилы абс', 'Абсолютное число нейтрофилов'],
+        'monocytes_absolute': ['Моноциты, абс.', 'Моноциты абс.', 'Моноциты, абс', 'Моноциты абс', 'Абсолютное число моноцитов'],
+        'basophils_absolute': ['Базофилы, абс.', 'Базофилы абс.', 'Базофилы, абс', 'Базофилы абс', 'Абсолютное число базофилов'],
+    }
+    
+    # Регулярные выражения для извлечения значений напрямую из текста
+    direct_regex = {
+        'lymphocytes_absolute': r"лимфоцит.*?\s*абс.*?(\d+[.,]\d+)",
+        'eosinophils_absolute': r"[эе]озинофил.*?\s*абс.*?(\d+[.,]\d+)",
+        'neutrophils_absolute': r"[нН]ейтрофил.*?\s*абс.*?(\d+[.,]\d+)",
+        'monocytes_absolute': r"[мМ]оноцит.*?\s*абс.*?(\d+[.,]\d+)",
+        'basophils_absolute': r"[бБ]азофил.*?\s*абс.*?(\d+[.,]\d+)",
+    }
+    
+    found_keys = set()
+    
+    # Сначала попробуем извлечь значения с помощью регулярных выражений напрямую из текста
+    for text in pages:
+        for field, pattern in direct_regex.items():
+            if field in found_keys:
+                continue
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1).replace(',', '.')
+                try:
+                    result[field] = float(val)
+                    found_keys.add(field)
+                except:
+                    pass
+    
+    # Затем стандартный подход - по строкам и токенам
+    for text in pages:
+        lines = text.split('\n')
+        for line in lines:
+            tokens = [x for x in line.strip().split() if x]
+            line_joined = ' '.join(tokens)
+            for field, label in prefix_map:
+                if field in found_keys:
+                    continue
+                # Alternative labels
+                if field in alt_labels:
+                    is_label = any(line_joined.lower().startswith(alt.lower()) for alt in alt_labels[field])
+                else:
+                    is_label = line_joined.lower().startswith(label.lower())
+                if not is_label:
+                    continue
+                # remove the label from the start, then take the FIRST number
+                after_label = line_joined[len(label):].strip()
+                # after_label.tokens may start with "1.44 1.67 10.05.24..." => we want first float
+                match = re.search(r"(\d+[.,]?\d*)", after_label)
+                if match:
+                    val = match.group(1).replace(',', '.')
+                    try:
+                        result[field] = float(val)
+                        found_keys.add(field)
+                    except:
+                        pass
+    
+    # Дополнительная обработка для самых частых ошибок - если мы видим процент, но не видим абсолютное значение
+    if 'lymphocytes_percent' in result and 'lymphocytes_absolute' not in result:
+        for text in pages:
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if 'лимфоцит' in line.lower() and '%' in line:
+                    # Проверяем следующую строку после строки с процентами
+                    if i + 1 < len(lines) and 'абс' in lines[i + 1].lower():
+                        match = re.search(r"(\d+[.,]\d+)", lines[i + 1])
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['lymphocytes_absolute'] = float(val)
+                            except:
+                                pass
+    
+    if 'eosinophils_percent' in result and 'eosinophils_absolute' not in result:
+        for text in pages:
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if 'эозинофил' in line.lower() and '%' in line:
+                    # Проверяем следующую строку после строки с процентами
+                    if i + 1 < len(lines) and 'абс' in lines[i + 1].lower():
+                        match = re.search(r"(\d+[.,]\d+)", lines[i + 1])
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result['eosinophils_absolute'] = float(val)
+                            except:
+                                pass
+    
+    return result
 
 def clean_number(value: str) -> Optional[float]:
     if value is None:

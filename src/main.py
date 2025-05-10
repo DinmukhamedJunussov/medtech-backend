@@ -28,7 +28,7 @@ from src.services.helper import (
     extract_text_fitz,
     extract_text_pdfplumber,
     interpret_sii,
-    parse_results,
+    parse_results, extract_text_pages, extract_cbc_values, extract_meta, CBC_MAPPING,
 )
 from src.services.ocr_aws import analyze_document
 from src.services.sii_category import get_sii_category
@@ -75,26 +75,44 @@ def read_root():
     return {"Fact": "Dimash, you are doing great. Just imagine what you can achieve, if you continue putting effort "
                      "every day for the next 30 years"}
 
-@app.post("/upload-bloodtest/", response_model=BloodTestResults)
-async def upload_bloodtest(file: UploadFile = File(...)):
+@app.post("/parse-blood-test", response_model=BloodTestResults)
+async def parse_blood_test(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
-
     pdf_bytes = await file.read()
+    pages = extract_text_pages(pdf_bytes)
+    if not pages:
+        raise HTTPException(status_code=422, detail="Text extraction failed")
 
-    # Try to extract with pdfplumber first
-    text = extract_text_pdfplumber(pdf_bytes).strip()
+    # Логируем извлечённый текст
+    logger.info(f"Extracted pages: {pages}")
 
-    # If extraction fails or too short, try fitz as fallback
-    if len(text) < 100:
-        text = extract_text_fitz(pdf_bytes)
+    cbc_data = extract_cbc_values(pages)
+    logger.info(f"Extracted CBC data: {cbc_data}")
 
-    # Optional: raise error if still no text
-    if len(text.strip()) < 30:
-        raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
+    meta = {}
+    for pg in pages:
+        m = extract_meta(pg)
+        for k, v in m.items():
+            if not meta.get(k) and v:
+                meta[k] = v
 
-    results = parse_results(text)
-    return results
+    logger.info(f"Extracted meta: {meta}")
+
+    result = BloodTestResults(**cbc_data, **meta)
+    analyte_fields = [
+        "hemoglobin", "white_blood_cells", "red_blood_cells", "platelets",
+        "neutrophils_percent", "neutrophils_absolute",
+        "lymphocytes_percent", "lymphocytes_absolute",
+        "monocytes_percent", "monocytes_absolute",
+        "eosinophils_percent", "eosinophils_absolute",
+        "basophils_percent", "basophils_absolute"
+    ]
+    if not any(getattr(result, field) is not None for field in analyte_fields):
+        raise HTTPException(status_code=422, detail="CBC not found in document")
+
+    return result
+
 
 # @app.get("/chat")
 # async def chat_controller(prompt: str = "Inspire me"):
