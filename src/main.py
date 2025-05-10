@@ -63,6 +63,8 @@ origins = [
     "https://www.oncotest.kz",
     "http://oncotest.kz",
     "https://oncotest.kz",
+    "http://api.oncotest.kz",
+    "https://api.oncotest.kz",
     "http://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
     "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com"
 ]
