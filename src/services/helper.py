@@ -1,7 +1,67 @@
+import io
+import re
 from datetime import datetime
+from typing import Optional
 
-from src.schemas.blood_results import SIILevel
+import fitz  # PyMuPDF
+import pdfplumber
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+from src.schemas.blood_results import BloodTestResults, SIILevel
 
+
+def clean_number(value: str) -> Optional[float]:
+    if value is None:
+        return None
+    value = value.replace(',', '.')
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+def parse_results(text: str) -> BloodTestResults:
+    def find(pattern):
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        return clean_number(match.group(1)) if match else None
+
+    def find_date(pattern):
+        match = re.search(pattern, text)
+        if match:
+            try:
+                # format: 01.06.2024 09:03
+                return datetime.strptime(match.group(1), "%d.%m.%Y %H:%M")
+            except Exception:
+                return None
+        return None
+
+    return BloodTestResults(
+        hemoglobin=find(r"Гемоглобин\s+(\d+[\.,]?\d*)\s*г/л"),
+        white_blood_cells=find(r"Лейкоциты\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        red_blood_cells=find(r"Эритроциты\s+(\d+[\.,]?\d*)\s*млн/мкл"),
+        platelets=find(r"Тромбоциты\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        neutrophils_percent=find(r"Нейтрофилы.*?(\d+[\.,]?\d*)\*?\s*%"),
+        neutrophils_absolute=find(r"Нейтрофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        lymphocytes_percent=find(r"Лимфоциты, %\s+(\d+[\.,]?\d*)\*?\s*%"),
+        lymphocytes_absolute=find(r"Лимфоциты, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        monocytes_percent=find(r"Моноциты, %\s+(\d+[\.,]?\d*)\s*%"),
+        monocytes_absolute=find(r"Моноциты, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        eosinophils_percent=find(r"Эозинофилы, %\s+(\d+[\.,]?\d*)\s*%"),
+        eosinophils_absolute=find(r"Эозинофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        basophils_percent=find(r"Базофилы, %\s+(\d+[\.,]?\d*)\s*%"),
+        basophils_absolute=find(r"Базофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
+        test_date=find_date(r'Үлгі алынған күні.*?(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})')
+    )
+
+def extract_text_pdfplumber(pdf_bytes: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        return "\n".join(page.extract_text() or '' for page in pdf.pages)
+
+def extract_text_fitz(pdf_bytes: bytes) -> str:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    result = ""
+    for page in doc:
+        result += page.get_text()
+    return result
 
 def interpret_sii(sii: float) -> tuple[SIILevel, str]:
     if sii < 300:

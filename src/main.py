@@ -7,7 +7,7 @@ from typing import Dict, Optional, Tuple
 
 import fitz  # PyMuPDF
 import pdfplumber
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -23,7 +23,13 @@ from src.schemas.blood_results import (
     SIIResult,
     blood_test_names,
 )
-from src.services.helper import convert_lab_results, interpret_sii
+from src.services.helper import (
+    convert_lab_results,
+    extract_text_fitz,
+    extract_text_pdfplumber,
+    interpret_sii,
+    parse_results,
+)
 from src.services.ocr_aws import analyze_document
 from src.services.sii_category import get_sii_category
 from src.settings import settings
@@ -69,78 +75,26 @@ def read_root():
     return {"Fact": "Dimash, you are doing great. Just imagine what you can achieve, if you continue putting effort "
                      "every day for the next 30 years"}
 
-# def extract_values(text: str) -> Dict[str, str]:
-#     patterns = {
-#         "Гемоглобин": r"Гемоглобин\s+(\d+)\s+г/л",
-#         "Лейкоциты": r"Лейкоциты\s+([\d,]+)\s+\*10\^9/л",
-#         "Эритроциты": r"Эритроциты\s+([\d,]+)\s+\*10\^12/л",
-#         "Тромбоциты": r"Тромбоциты\s+(\d+)\s+\*10\^9/л",
-#         "Нейтрофилы %": r"Нейтрофилы\s+([\d,]+)\s+%",
-#         "Нейтрофилы #": r"Нейтрофилы \(абс\. кол-во\)\s+([\d,]+)\s+\*10\^9/л",
-#         "Лимфоциты %": r"Лимфоциты\s+([\d,]+)\s+%",
-#         "Лимфоциты #": r"Лимфоциты \(абс\. кол-во\)\s+([\d,]+)\s+\*10\^9/л",
-#         "Моноциты %": r"Моноциты\s+([\d,]+)\s+%",
-#         "Моноциты #": r"Моноциты \(абс\. кол-во\)\s+([\d,]+)\s+\*10\^9/л",
-#         "Эозинофилы %": r"Эозинофилы\s+([\d,]+)\s+%",
-#         "Эозинофилы #": r"Эозинофилы \(абс\. кол-во\)\s+([\d,]+)\s+\*10\^9/л",
-#         "Базофилы %": r"Базофилы\s+([\d,]+)\s+%",
-#         "Базофилы #": r"Базофилы \(абс\. кол-во\)\s+([\d,]+)\s+\*10\^9/л",
-#     }
-#
-#     results = {}
-#     for key, pattern in patterns.items():
-#         match = re.search(pattern, text)
-#         results[key] = match.group(1).replace(",", ".") if match else None
-#     return results
-#
-# @app.post("/parse-blood-test/")
-# async def parse_blood_test(file: UploadFile = File(...)):
-#     contents = await file.read()
-#     with fitz.open(stream=contents, filetype="pdf") as doc:
-#         full_text = "\n".join(page.get_text() for page in doc)
-#     values = extract_values(full_text)
-#     return values
+@app.post("/upload-bloodtest/", response_model=BloodTestResults)
+async def upload_bloodtest(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
 
-BLOOD_TEST_MAP = {
-    "hemoglobin": r"Гемоглобин\s+[A-Z]*\s*([\d.,]+)",
-    "white_blood_cells": r"Лейкоциты\s+[A-Z]*\s*([\d.,]+)",
-    "red_blood_cells": r"Эритроциты\s+[A-Z]*\s*([\d.,]+)",
-    "platelets": r"Тромбоциты\s+[A-Z]*\s*([\d.,]+)",
-    "neutrophils_percent": r"Нейтрофилы\s*NEU%\s*([\d.,]+)",
-    "neutrophils_absolute": r"Нейтрофилы\s*\(абс. кол-во\)\s*NEU#\s*([\d.,]+)",
-    "lymphocytes_percent": r"Лимфоциты\s*LYM%\s*([\d.,]+)",
-    "lymphocytes_absolute": r"Лимфоциты\s*\(абс. кол-во\)\s*LYM#\s*([\d.,]+)",
-    "monocytes_percent": r"Моноциты\s*MON%\s*([\d.,]+)",
-    "monocytes_absolute": r"Моноциты\s*\(абс. кол-во\)\s*MON#\s*([\d.,]+)",
-    "eosinophils_percent": r"Эозинофилы\s*EOS%\s*([\d.,]+)",
-    "eosinophils_absolute": r"Эозинофилы\s*\(абс. кол-во\)\s*EOS#\s*([\d.,]+)",
-    "basophils_percent": r"Базофилы\s*BAS%\s*([\d.,]+)",
-    "basophils_absolute": r"Базофилы\s*\(абс. кол-во\)\s*BAS#\s*([\d.,]+)",
-}
+    pdf_bytes = await file.read()
 
-def extract_values(text: str):
-    result = {}
-    for parameter, pattern in BLOOD_TEST_MAP.items():
-        match = re.search(pattern, text)
-        if match:
-            value = match.group(1).replace(",", ".")
-            try:
-                value = float(value)
-            except ValueError:
-                pass
-            result[parameter] = value
-        else:
-            result[parameter] = None
-    return result
+    # Try to extract with pdfplumber first
+    text = extract_text_pdfplumber(pdf_bytes).strip()
 
-@app.post("/parse-blood-test/")
-async def parse_blood_test(file: UploadFile = File(...)):
-    # Parse PDF
-    with pdfplumber.open(file.file) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    values = extract_values(text)
-    logger.info(f"Received blood test input: {values}")
-    return values
+    # If extraction fails or too short, try fitz as fallback
+    if len(text) < 100:
+        text = extract_text_fitz(pdf_bytes)
+
+    # Optional: raise error if still no text
+    if len(text.strip()) < 30:
+        raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
+
+    results = parse_results(text)
+    return results
 
 # @app.get("/chat")
 # async def chat_controller(prompt: str = "Inspire me"):
