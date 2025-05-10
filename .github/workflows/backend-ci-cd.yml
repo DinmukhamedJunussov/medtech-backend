@@ -26,14 +26,12 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd backend
           python -m pip install --upgrade pip
           pip install pytest
           pip install -r requirements.txt
       
       - name: Test with pytest
         run: |
-          cd backend
           pytest tests/
   
   deploy:
@@ -61,7 +59,6 @@ jobs:
           ECR_REPOSITORY: medtech-backend
           IMAGE_TAG: latest
         run: |
-          cd backend
           docker buildx build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
       
