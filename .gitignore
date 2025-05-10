@@ -160,3 +160,5 @@ cython_debug/
 .idea/
 qdrant_storage
 uploads
+
+.DS_Store
