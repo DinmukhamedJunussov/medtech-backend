@@ -5,11 +5,11 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 class SIILevel(str, Enum):
-    very_low = "🟢🟢 Очень низкий"
-    low = "🟩🟩 Низкий"
-    moderate = "🟡🟡 Умеренный"
-    borderline_high = "🟠🟠 Погранично-высокий"
-    high = "🔴🔴 Высокий"
+    very_low = "🟢 Очень низкий"
+    low = "🟩 Низкий"
+    moderate = "🟡 Умеренный"
+    borderline_high = "🟠 Погранично-высокий"
+    high = "🔴 Высокий"
 
 class BloodTestInput(BaseModel):
     neutrophils_absolute: float = Field(..., description="Absolute neutrophil count (×10⁹/L)")
