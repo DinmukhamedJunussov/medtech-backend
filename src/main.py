@@ -322,7 +322,7 @@ async def blood_results_controller(data: BloodTestResults):
             raise ValueError("Значение лимфоцитов (абс.) не может быть нулевым")
             
         sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
-        level, interpretation = interpret_sii(sii)
+        level, interpretation = interpret_sii(sii, data.cancer_type)
         return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
     except Exception as e:
         logger.error(f"Error in blood_results_controller: {str(e)}")
