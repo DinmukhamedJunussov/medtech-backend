@@ -164,3 +164,4 @@ uploads
 .DS_Store
 
 docker aws deploy.txt
+experiments.py

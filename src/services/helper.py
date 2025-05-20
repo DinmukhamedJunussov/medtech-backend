@@ -7,7 +7,7 @@ import fitz  # PyMuPDF
 import pdfplumber
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from src.schemas.blood_results import BloodTestResults, SIILevel
+from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels
 
 CBC_MAPPING = {
     "гемоглобин": "hemoglobin",
@@ -433,38 +433,14 @@ def extract_text_fitz(pdf_bytes: bytes) -> str:
 
 
 def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel, str]:
-    from src.schemas.blood_results import SIILevel
-    from src.utils.sii_calculator import get_sii_risk_level, SIIRiskLevel
+    for value in cancer_types:
+        if value.name == cancer_type:
+            cnt = 0
+            for category in value.sii_categories:
+                cnt += 1
+                if category[0] <= sii <= category[1]:
+                    return (SIILevel.from_int(cnt).value, sii_conclusion_levels[cnt]["summary"])
 
-    try:
-        risk_level, description = get_sii_risk_level(sii, cancer_type)
-
-        # Сопоставляем SIIRiskLevel с SIILevel
-        level_mapping = {
-            SIIRiskLevel.very_low: SIILevel.very_low,
-            SIIRiskLevel.low: SIILevel.low,
-            SIIRiskLevel.moderate: SIILevel.moderate,
-            SIIRiskLevel.high: SIILevel.borderline_high,
-            SIIRiskLevel.very_high: SIILevel.high
-        }
-
-        level = level_mapping.get(risk_level, SIILevel.moderate)
-
-        # Формируем интерпретацию на основе risk_level
-        interpretations = {
-            SIIRiskLevel.very_low: "Сбалансированное состояние. Наиболее благоприятный профиль. Высокая иммунная активность, низкий воспалительный фон.",
-            SIIRiskLevel.low: "Иммунный статус сохранён. Признаков активного воспаления нет, хорошая прогностическая группа у онкопациентов.",
-            SIIRiskLevel.moderate: "Потенциальная активация иммунной системы. Возможны субклинические воспалительные процессы. Необходим контроль.",
-            SIIRiskLevel.high: "Умеренное воспаление. Ассоциирован с повышенным риском у онкологических и хронических больных.",
-            SIIRiskLevel.very_high: "Активное воспаление или иммунное истощение. Высокий риск летальности и плохой ответ на лечение. Требует немедленного вмешательства."
-        }
-
-        interpretation = interpretations.get(risk_level, "Требуется дополнительное обследование")
-
-        return level, f"{interpretation} (для {description})"
-    except (ValueError, KeyError) as e:
-        # Если произошла ошибка, используем общий подход
-        pass
 
 def convert_lab_results(raw: dict) -> dict:
     return {
