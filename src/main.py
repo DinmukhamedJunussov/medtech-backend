@@ -71,7 +71,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Используем список разрешенных доменов
+    allow_origins=["*"],  # Используем список разрешенных доменов
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -296,6 +296,31 @@ async def parse_blood_test(file: UploadFile = File(...)):
     return result
 
 
+@app.post("/blood-results")
+async def blood_results_controller(data: BloodTestResults):
+    # Индекс системного иммунного воспаления
+    logger.info(f"Received blood test input: {data}")
+    
+    try:
+        # Проверяем наличие необходимых значений
+        if data.neutrophils_absolute is None or data.platelets is None or data.lymphocytes_absolute is None:
+            raise ValueError("Отсутствуют необходимые значения для расчета")
+            
+        if data.lymphocytes_absolute == 0:
+            raise ValueError("Значение лимфоцитов (абс.) не может быть нулевым")
+        print(data)
+            
+        sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
+        level, interpretation = interpret_sii(sii, data.cancer_type)
+        return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
+    except Exception as e:
+        logger.error(f"Error in blood_results_controller: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
 # @app.get("/chat")
 # async def chat_controller(prompt: str = "Inspire me"):
 #     response = await async_client.chat.completions.create(
@@ -308,28 +333,6 @@ async def parse_blood_test(file: UploadFile = File(...)):
 #     content = response.choices[0].message.content
 #     return {"statement": content}
 
-@app.post("/blood-results")
-async def blood_results_controller(data: BloodTestResults):
-    # Индекс системного иммунного воспаления
-    logger.info(f"Received blood test input: {data}")
-    
-    try:
-        # Проверяем наличие необходимых значений
-        if data.neutrophils_absolute is None or data.platelets is None or data.lymphocytes_absolute is None:
-            raise ValueError("Отсутствуют необходимые значения для расчета SII")
-            
-        if data.lymphocytes_absolute == 0:
-            raise ValueError("Значение лимфоцитов (абс.) не может быть нулевым")
-            
-        sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
-        level, interpretation = interpret_sii(sii, data.cancer_type)
-        return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
-    except Exception as e:
-        logger.error(f"Error in blood_results_controller: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
 
 # @app.post("/blood-results")
 # async def blood_results_controller(results: BloodTestResults):

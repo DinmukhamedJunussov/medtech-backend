@@ -434,7 +434,7 @@ def extract_text_fitz(pdf_bytes: bytes) -> str:
 
 def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel, str]:
     for value in cancer_types:
-        if value.name == cancer_type:
+        if cancer_type in value.icd10_codes:
             cnt = 0
             for category in value.sii_categories:
                 cnt += 1

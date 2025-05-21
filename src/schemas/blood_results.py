@@ -67,12 +67,6 @@ class BloodTestResults(BaseModel):
 
     # Cancer type
     cancer_type: str | None = Field(None, description="Cancer type")
-    
-    # Метаданные
-    test_date: datetime | None = Field(None, description="Дата проведения анализа")
-    patient_id: int | None = Field(None, description="ID пациента")
-    lab_id: int | None = Field(None, description="ID лаборатории")
-    notes: str | None = Field(None, description="Дополнительные заметки")
 
     model_config = {
         "json_schema_extra": {
@@ -92,10 +86,6 @@ class BloodTestResults(BaseModel):
                 "basophils_percent": 2.0,
                 "basophils_absolute": 0.1,
                 "cancer_type": "Рак легкого (немелкоклеточный и мелкоклеточный)",
-                "test_date": "2024-03-20T10:00:00",
-                "patient_id": 1,
-                "lab_id": 1,
-                "notes": "Нормальные показатели"
             }
         }
     }
