@@ -18,7 +18,6 @@ from rapidfuzz import process
 from src.middlewares import monitor_service
 from src.models.llm import system_prompt
 from src.schemas.blood_results import (
-    BloodTestInput,
     BloodTestResults,
     SIIResult,
     blood_test_names,

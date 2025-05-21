@@ -26,11 +26,6 @@ class SIILevel(str, Enum):
             raise ValueError(f"Invalid value {value}. Must be between 1 and 5.")
         return mapping[value]
 
-class BloodTestInput(BaseModel):
-    neutrophils_absolute: float = Field(..., description="Absolute neutrophil count (×10⁹/L)")
-    lymphocytes_absolute: float = Field(..., description="Absolute lymphocyte count (×10⁹/L)")
-    platelets: float = Field(..., description="Platelet count (×10⁹/L)")
-
 class SIIResult(BaseModel):
     sii: float
     level: SIILevel
@@ -85,7 +80,7 @@ class BloodTestResults(BaseModel):
                 "eosinophils_absolute": 0.2,
                 "basophils_percent": 2.0,
                 "basophils_absolute": 0.1,
-                "cancer_type": "Рак легкого (немелкоклеточный и мелкоклеточный)",
+                "cancer_type": "C34",
             }
         }
     }
