@@ -7,7 +7,7 @@ import fitz  # PyMuPDF
 import pdfplumber
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from src.schemas.blood_results import BloodTestResults, SIILevel
+from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels
 
 CBC_MAPPING = {
     "гемоглобин": "hemoglobin",
@@ -431,32 +431,16 @@ def extract_text_fitz(pdf_bytes: bytes) -> str:
         result += page.get_text()
     return result
 
-def interpret_sii(sii: float) -> tuple[SIILevel, str]:
-    if sii < 300:
-        return (
-            SIILevel.very_low,
-            "Сбалансированное состояние. Наиболее благоприятный профиль. Высокая иммунная активность, низкий воспалительный фон."
-        )
-    elif 300 <= sii < 450:
-        return (
-            SIILevel.low,
-            "Иммунный статус сохранён. Признаков активного воспаления нет, хорошая прогностическая группа у онкопациентов."
-        )
-    elif 450 <= sii < 600:
-        return (
-            SIILevel.moderate,
-            "Потенциальная активация иммунной системы. Возможны субклинические воспалительные процессы. Необходим контроль."
-        )
-    elif 600 <= sii < 750:
-        return (
-            SIILevel.borderline_high,
-            "Умеренное воспаление. Ассоциирован с повышенным риском у онкологических и хронических больных."
-        )
-    else:
-        return (
-            SIILevel.high,
-            "Активное воспаление или иммунное истощение. Высокий риск летальности и плохой ответ на лечение. Требует немедленного вмешательства."
-        )
+
+def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel, str]:
+    for value in cancer_types:
+        if cancer_type in value.icd10_codes:
+            cnt = 0
+            for category in value.sii_categories:
+                cnt += 1
+                if category[0] <= sii <= category[1]:
+                    return (SIILevel.from_int(cnt).value, sii_conclusion_levels[cnt]["summary"])
+
 
 def convert_lab_results(raw: dict) -> dict:
     return {
