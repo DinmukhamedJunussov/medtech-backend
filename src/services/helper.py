@@ -7,6 +7,7 @@ import fitz  # PyMuPDF
 import pdfplumber
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from loguru import logger
 from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels
 
 CBC_MAPPING = {
@@ -97,41 +98,14 @@ def detect_lab_type(pages: list[str]) -> str:
     return "invitro"
 
 def extract_meta(text: str) -> dict:
+    """Извлекает метаданные из текста PDF, но возвращает только поля, существующие в BloodTestResults"""
     meta = {}
-    # Формат для Invitro
-    d = re.search(r"Үлгі алынған күні.*?(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})", text)
-    if d:
-        try:
-            meta['test_date'] = datetime.strptime(d.group(1), "%d.%m.%Y %H:%M")
-        except Exception:
-            pass
     
-    # Формат для Olymp Labs
-    if not meta.get('test_date'):
-        d_olymp = re.search(r"Дата взятия.*?(\d{2}\.\d{2}\.\d{4})", text)
-        if d_olymp:
-            try:
-                meta['test_date'] = datetime.strptime(d_olymp.group(1), "%d.%m.%Y")
-            except Exception:
-                pass
+    # Извлекаем cancer_type если найден
+    cancer_pattern = re.search(r"диагноз[:\s]+([A-Z]\d+)", text, re.IGNORECASE)
+    if cancer_pattern:
+        meta['cancer_type'] = cancer_pattern.group(1)
     
-    # Идентификатор пациента для Invitro
-    i = re.search(r"ИНЗ:\s*(\d+)", text)
-    if i:
-        try:
-            meta['patient_id'] = int(i.group(1))
-        except Exception:
-            pass
-    
-    # Идентификатор пациента для Olymp
-    if not meta.get('patient_id'):
-        i_olymp = re.search(r"N заказа:?\s*(\d+)", text)
-        if i_olymp:
-            try:
-                meta['patient_id'] = int(i_olymp.group(1))
-            except Exception:
-                pass
-            
     return meta
 
 CBC_PATTERNS = [
@@ -160,10 +134,51 @@ def extract_cbc_values(pages: list[str]) -> dict:
     find the analyte label by 'startswith', and take the FIRST NUMERIC value directly after (to the right).
     This robustly handles: 'Лимфоциты, абс. 1.44 1.67 10.05.24 ...'
     """
-    result = {}
+    result: dict[str, float] = {}
     
     # Определяем формат лаборатории
     lab_type = detect_lab_type(pages)
+    logger.info(f"DEBUG: extract_cbc_values called with lab_type: {lab_type}")
+    
+    found_keys = set()
+    
+    # Специальная обработка для лаборатории Olymp в НАЧАЛЕ функции
+    if lab_type == "olymp":
+        logger.info("DEBUG: Processing Olymp lab in extract_cbc_values")
+        # В Olymp формате значения часто указаны на следующей строке после названия параметра
+        for text in pages:
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                line_stripped = line.strip()
+                line_lower = line_stripped.lower()
+                
+                # Логируем каждую строку для отладки
+                if any(keyword in line_lower for keyword in ['нейтрофил', 'лимфоцит', 'моноцит', 'эозинофил', 'базофил']):
+                    logger.info(f"DEBUG: Found keyword line {i+1}: '{line_stripped}' -> '{line_lower}'")
+                
+                # Обработка процентных значений - поиск в строке, а не точное совпадение
+                param_mapping = {
+                    'нейтрофилы': 'neutrophils_percent',
+                    'лимфоциты': 'lymphocytes_percent', 
+                    'моноциты': 'monocytes_percent',
+                    'эозинофилы': 'eosinophils_percent',
+                    'базофилы': 'basophils_percent'
+                }
+                
+                # Проверяем, содержит ли строка название параметра и процентное значение
+                for param_name, field_name in param_mapping.items():
+                    if field_name not in found_keys and param_name in line_lower and '%' in line:
+                        logger.info(f"DEBUG: Processing {field_name} from line: '{line_stripped}'")
+                        # Ищем процентное значение в той же строке
+                        match = re.search(r'(\d+[.,]\d*)\s*%', line)
+                        if match:
+                            val = match.group(1).replace(',', '.')
+                            try:
+                                result[field_name] = float(val)
+                                found_keys.add(field_name)
+                                logger.info(f"DEBUG: Found {field_name} = {val}")
+                            except:
+                                pass
     
     # Map CBC fields to Russian analyte name (prefix)
     prefix_map = [
@@ -247,8 +262,6 @@ def extract_cbc_values(pages: list[str]) -> dict:
         }
         direct_regex.update(olymp_regex)
     
-    found_keys = set()
-    
     # Сначала попробуем извлечь значения с помощью регулярных выражений напрямую из текста
     for text in pages:
         for field, pattern in direct_regex.items():
@@ -322,60 +335,9 @@ def extract_cbc_values(pages: list[str]) -> dict:
                             except:
                                 pass
     
-    # Для Olymp: дополнительная обработка для абсолютных значений
-    if lab_type == "olymp":
-        # Для Olymp Labs часто значения указаны в виде таблицы, где есть значение, единица измерения и референс
-        for text in pages:
-            lines = text.split('\n')
-            for i, line in enumerate(lines):
-                if "абс." in line.lower():
-                    # В Olymp формате часто бывает, что абсолютные значения указаны в отдельной строке
-                    if "лимфоцит" in line.lower() and 'lymphocytes_absolute' not in found_keys:
-                        match = re.search(r"(\d+[.,]\d+)", line)
-                        if match:
-                            val = match.group(1).replace(',', '.')
-                            try:
-                                result['lymphocytes_absolute'] = float(val)
-                                found_keys.add('lymphocytes_absolute')
-                            except:
-                                pass
-                    elif "нейтрофил" in line.lower() and 'neutrophils_absolute' not in found_keys:
-                        match = re.search(r"(\d+[.,]\d+)", line)
-                        if match:
-                            val = match.group(1).replace(',', '.')
-                            try:
-                                result['neutrophils_absolute'] = float(val)
-                                found_keys.add('neutrophils_absolute')
-                            except:
-                                pass
-                    elif "моноцит" in line.lower() and 'monocytes_absolute' not in found_keys:
-                        match = re.search(r"(\d+[.,]\d+)", line)
-                        if match:
-                            val = match.group(1).replace(',', '.')
-                            try:
-                                result['monocytes_absolute'] = float(val)
-                                found_keys.add('monocytes_absolute')
-                            except:
-                                pass
-                    elif "эозинофил" in line.lower() and 'eosinophils_absolute' not in found_keys:
-                        match = re.search(r"(\d+[.,]\d+)", line)
-                        if match:
-                            val = match.group(1).replace(',', '.')
-                            try:
-                                result['eosinophils_absolute'] = float(val)
-                                found_keys.add('eosinophils_absolute')
-                            except:
-                                pass
-                    elif "базофил" in line.lower() and 'basophils_absolute' not in found_keys:
-                        match = re.search(r"(\d+[.,]\d+)", line)
-                        if match:
-                            val = match.group(1).replace(',', '.')
-                            try:
-                                result['basophils_absolute'] = float(val)
-                                found_keys.add('basophils_absolute')
-                            except:
-                                pass
+
     
+    logger.info(f"DEBUG: Final result from extract_cbc_values: {result}")
     return result
 
 def clean_number(value: str) -> Optional[float]:
@@ -416,8 +378,7 @@ def parse_results(text: str) -> BloodTestResults:
         eosinophils_percent=find(r"Эозинофилы, %\s+(\d+[\.,]?\d*)\s*%"),
         eosinophils_absolute=find(r"Эозинофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
         basophils_percent=find(r"Базофилы, %\s+(\d+[\.,]?\d*)\s*%"),
-        basophils_absolute=find(r"Базофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл"),
-        test_date=find_date(r'Үлгі алынған күні.*?(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})')
+        basophils_absolute=find(r"Базофилы, абс\.\s+(\d+[\.,]?\d*)\s*тыс/мкл")
     )
 
 def extract_text_pdfplumber(pdf_bytes: bytes) -> str:
@@ -434,12 +395,14 @@ def extract_text_fitz(pdf_bytes: bytes) -> str:
 
 def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel, str]:
     for value in cancer_types:
-        if cancer_type in value.icd10_codes:
+        if cancer_type and cancer_type in value.icd10_codes:
             cnt = 0
             for category in value.sii_categories:
                 cnt += 1
-                if category[0] <= sii <= category[1]:
-                    return (SIILevel.from_int(cnt).value, sii_conclusion_levels[cnt]["summary"])
+                if category[0] is not None and category[1] is not None and category[0] <= sii <= category[1]:
+                    return (SIILevel.from_int(cnt), sii_conclusion_levels[cnt]["summary"])
+    # Возвращаем значение по умолчанию, если ничего не найдено
+    return (SIILevel.low, "Нормальный уровень")
 
 
 def convert_lab_results(raw: dict) -> dict:
