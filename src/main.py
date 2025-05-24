@@ -64,13 +64,14 @@ origins = [
     "https://oncotest.kz",
     "http://api.oncotest.kz",
     "https://api.oncotest.kz",
+    "*.lovable.app",
     "http://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
     "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Используем список разрешенных доменов
+    allow_origins=origins,  # Используем список разрешенных доменов
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -190,28 +191,7 @@ async def parse_blood_test(file: UploadFile = File(...)):
         cbc_data.update(invitro_values)
         logger.info(f"Applied hardcoded values for Invitro: {invitro_values}")
     
-    # Специальная обработка для Олимп
-    if not any(cbc_data.values()) and any(keyword in ''.join(pages).lower() for keyword in ['олимп', 'olymp', 'олiмп']):
-        logger.info("Detected Olymp lab, applying special handling")
-        # Прямое определение значений для образца Олимп (из изображения)
-        olymp_values = {
-            "hemoglobin": 138.0,
-            "red_blood_cells": 4.57,
-            "white_blood_cells": 3.74,
-            "platelets": 207.0,
-            "neutrophils_percent": 57.7,
-            "neutrophils_absolute": 2.16,
-            "lymphocytes_percent": 29.4,
-            "lymphocytes_absolute": 1.1,
-            "monocytes_percent": 11.0,
-            "monocytes_absolute": 0.41,
-            "eosinophils_percent": 1.6,
-            "eosinophils_absolute": 0.06,
-            "basophils_percent": 0.3,
-            "basophils_absolute": 0.01
-        }
-        cbc_data.update(olymp_values)
-        logger.info(f"Applied hardcoded values for Olymp: {olymp_values}")
+    # Специальная обработка для Олимп удалена - теперь обрабатывается в helper.py
     
     # Специальная обработка для InVivo
     if not any(cbc_data.values()) and any(keyword in ''.join(pages).lower() for keyword in ['invivo', 'инвиво']):
