@@ -307,8 +307,7 @@ async def blood_results_controller(data: BloodTestResults):
             
         if data.lymphocytes_absolute == 0:
             raise ValueError("Значение лимфоцитов (абс.) не может быть нулевым")
-        print(data)
-            
+
         sii = (data.neutrophils_absolute * data.platelets) / data.lymphocytes_absolute
         level, interpretation = interpret_sii(sii, data.cancer_type)
         return SIIResult(sii=round(sii, 2), level=level, interpretation=interpretation)
