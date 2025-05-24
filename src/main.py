@@ -65,6 +65,7 @@ origins = [
     "http://api.oncotest.kz",
     "https://api.oncotest.kz",
     "https://preview--health-score-reveal.lovable.app",
+    "https://health-score-reveal.lovable.app",
     "http://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
     "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com"
 ]
