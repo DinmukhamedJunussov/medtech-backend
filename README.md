@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
 [![Tests](https://img.shields.io/badge/tests-40%20passed-success.svg)](./tests/)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](./htmlcov/)
+[![Coverage](https://img.shields.io/badge/coverage-48%25-yellow.svg)](./htmlcov/)
 
 > Система анализа медицинских показателей крови с расчетом SII (Systemic Immune-Inflammation Index)
 
@@ -92,7 +92,7 @@ pytest tests/test_blood_parser.py -v                      # Парсеры
 ### 📈 Статистика тестов:
 - **Всего тестов:** 40
 - **Успешных:** 40 ✅ (100%)
-- **Покрытие кода:** 100%
+- **Покрытие кода:** 48%
 - **Время выполнения:** ~0.07 секунды
 
 ## 📖 API Документация
