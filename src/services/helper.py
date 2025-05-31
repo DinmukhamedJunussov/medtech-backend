@@ -400,16 +400,25 @@ def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel,
                 cnt += 1
                 if category[0] is not None and category[1] is not None and category[0] <= sii <= category[1]:
                     # Получаем случайную рекомендацию для данного уровня риска
-                    random_recommendation = get_random_recommendation(cnt)
-                    if random_recommendation and random_recommendation.get('recommendation'):
-                        # Объединяем описание с случайной рекомендацией
-                        rec = random_recommendation['recommendation']
-                        # Формируем список всех пунктов рекомендации
-                        items_list = "\n".join([f"• {item}" for item in rec['items']])
-                        summary = f"{random_recommendation['summary']}\n\n{rec['title']}:\n{items_list}"
-                        return (SIILevel.from_int(cnt), summary)
-                    elif random_recommendation:
-                        return (SIILevel.from_int(cnt), random_recommendation['summary'])
+                    try:
+                        random_recommendation = get_random_recommendation(cnt)
+                        if (random_recommendation and 
+                            isinstance(random_recommendation, dict) and 
+                            random_recommendation.get('recommendation') and
+                            isinstance(random_recommendation['recommendation'], dict) and
+                            'items' in random_recommendation['recommendation']):
+                            
+                            # Объединяем описание с случайной рекомендацией
+                            rec = random_recommendation['recommendation']
+                            # Формируем список всех пунктов рекомендации
+                            items_list = "\n".join([f"• {item}" for item in rec['items']])
+                            summary = f"{random_recommendation['summary']}\n\n{rec['title']}:\n{items_list}"
+                            return (SIILevel.from_int(cnt), summary)
+                        elif random_recommendation and isinstance(random_recommendation, dict) and 'summary' in random_recommendation:
+                            return (SIILevel.from_int(cnt), random_recommendation['summary'])
+                    except Exception:
+                        pass
+                    
                     return (SIILevel.from_int(cnt), "Описание недоступно")
     # Возвращаем значение по умолчанию, если ничего не найдено
     return (SIILevel.low, "Нормальный уровень")
