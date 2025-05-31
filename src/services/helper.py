@@ -1,14 +1,16 @@
 import io
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
+import random
 
 import fitz  # PyMuPDF
 import pdfplumber
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from loguru import logger
-from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels
+from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels, \
+    get_random_recommendation
 
 CBC_MAPPING = {
     "гемоглобин": "hemoglobin",
@@ -113,10 +115,7 @@ CBC_PATTERNS = [
     ("white_blood_cells", r"Лейкоциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
     ("red_blood_cells",   r"Эритроциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
     ("platelets",         r"Тромбоциты[^\d]*(\d+[\.,]\d+|\d+)", 0),
-    ("neutrophils_percent",     r"Нейтрофилы.*(%|проц)[^\d]*(\d+[\.,]\d+|\d+)", 2),
     ("neutrophils_percent",     r"Нейтрофилы\s*\(.*число.*\)\s*,?\s*(\d+[\.,]\d+|\d+)", 1),
-    ("neutrophils_percent",     r"Нейтрофилы[^\n]*?([-\d\.,]+)\s*%[^\S\n]*", 1),
-    # absolute matches: extract from "абс." lines. They may look like "Лимфоциты, абс. 1.44 1.67"
     ("neutrophils_absolute",    r"Нейтрофилы[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
     ("lymphocytes_percent",     r"Лимфоциты, %\s*(\d+[\.,]\d+|\d+)", 1),
     ("lymphocytes_absolute",    r"Лимфоциты[,]?\s*абс\.[^\d]*(\d+[\.,]\d+|\d+)", 1),
@@ -400,7 +399,27 @@ def interpret_sii(sii: float, cancer_type: str | None = None) -> tuple[SIILevel,
             for category in value.sii_categories:
                 cnt += 1
                 if category[0] is not None and category[1] is not None and category[0] <= sii <= category[1]:
-                    return (SIILevel.from_int(cnt), sii_conclusion_levels[cnt]["summary"])
+                    # Получаем случайную рекомендацию для данного уровня риска
+                    try:
+                        random_recommendation = get_random_recommendation(cnt)
+                        if (random_recommendation and 
+                            isinstance(random_recommendation, dict) and 
+                            random_recommendation.get('recommendation') and
+                            isinstance(random_recommendation['recommendation'], dict) and
+                            'items' in random_recommendation['recommendation']):
+                            
+                            # Объединяем описание с случайной рекомендацией
+                            rec = random_recommendation['recommendation']
+                            # Формируем список всех пунктов рекомендации
+                            items_list = "\n".join([f"• {item}" for item in rec['items']])
+                            summary = f"{random_recommendation['summary']}\n\n{rec['title']}:\n{items_list}"
+                            return (SIILevel.from_int(cnt), summary)
+                        elif random_recommendation and isinstance(random_recommendation, dict) and 'summary' in random_recommendation:
+                            return (SIILevel.from_int(cnt), random_recommendation['summary'])
+                    except Exception:
+                        pass
+                    
+                    return (SIILevel.from_int(cnt), "Описание недоступно")
     # Возвращаем значение по умолчанию, если ничего не найдено
     return (SIILevel.low, "Нормальный уровень")
 
