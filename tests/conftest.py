@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # Импортируем app из main.py (который использует новую архитектуру)
-from src.main import app
+from app.main import app
 
 @pytest.fixture
 def client():

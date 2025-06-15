@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from src.services.helper import extract_cbc_values, detect_lab_type
+from app.services.helper import extract_cbc_values, detect_lab_type
 
 class TestBloodParserHelper:
     
