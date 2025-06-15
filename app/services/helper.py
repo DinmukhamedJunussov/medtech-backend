@@ -9,7 +9,7 @@ import pdfplumber
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from loguru import logger
-from src.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels, \
+from app.schemas.blood_results import BloodTestResults, SIILevel, cancer_types, sii_conclusion_levels, \
     get_random_recommendation
 
 CBC_MAPPING = {

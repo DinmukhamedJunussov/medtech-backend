@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import re
 from loguru import logger
 
-from src.core.exceptions import BloodTestExtractionError
+from app.core.exceptions import BloodTestExtractionError
 
 
 class LabParser(ABC):

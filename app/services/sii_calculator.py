@@ -4,9 +4,9 @@
 from typing import Optional, Tuple
 from loguru import logger
 
-from src.core.exceptions import SIICalculationError
-from src.schemas.blood_results import BloodTestResults, SIILevel, SIIResult
-from src.services.helper import interpret_sii
+from app.core.exceptions import SIICalculationError
+from app.schemas.blood_results import BloodTestResults, SIILevel, SIIResult
+from app.services.helper import interpret_sii
 
 
 class SIICalculator:

@@ -6,12 +6,10 @@ from typing import Dict, List, Any, Tuple, Optional
 from fastapi import UploadFile
 from loguru import logger
 
-import fitz  # type: ignore  # PyMuPDF
-import pdfplumber
 
-from src.core.exceptions import UnsupportedFileFormatError, DocumentProcessingError
-from src.services.lab_parsers import LabParserFactory
-from src.services.ocr_aws import analyze_document, extract_full_text, extract_tables, process_blood_test_data, extract_patient_meta
+from app.core.exceptions import UnsupportedFileFormatError, DocumentProcessingError
+from app.services.lab_parsers import LabParserFactory
+from app.services.ocr_aws import analyze_document, extract_full_text, extract_tables, process_blood_test_data, extract_patient_meta
 
 
 class DocumentProcessor:
