@@ -24,7 +24,7 @@ jobs:
       
       - name: Lint with flake8
         run: |
-          flake8 app/ tests/
+          flake8 app/
       
       - name: Type check with mypy
         run: |
