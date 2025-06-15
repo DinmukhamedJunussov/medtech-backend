@@ -129,10 +129,10 @@ class OpenAIService:
     
     async def get_medical_recommendations(self, sii_score: float, blood_data: Dict[str, Any]) -> List[str]:
         """
-        Получение медицинских рекомендаций на основе SII индекса и данных крови
+        Получение медицинских рекомендаций на основе и данных крови
         
         Args:
-            sii_score: Значение SII индекса
+            sii_score: Значение индекса
             blood_data: Данные анализа крови
             
         Returns:

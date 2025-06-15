@@ -6,8 +6,6 @@ from typing import Dict, List, Any, Tuple, Optional
 from fastapi import UploadFile
 from loguru import logger
 
-import fitz  # type: ignore  # PyMuPDF
-import pdfplumber
 
 from app.core.exceptions import UnsupportedFileFormatError, DocumentProcessingError
 from app.services.lab_parsers import LabParserFactory

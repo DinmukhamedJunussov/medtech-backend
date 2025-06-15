@@ -17,11 +17,31 @@ class BloodTestRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True, nullable=True)  # ID пользователя (опционально)
     
+    # Информация о пациенте
+    patient_full_name = Column(String, nullable=True)
+    patient_gender = Column(String, nullable=True)
+    patient_age = Column(Integer, nullable=True)
+    patient_id = Column(String, nullable=True)
+    
+    # Метаданные тестирования
+    sample_taken_date = Column(DateTime, nullable=True)
+    sample_received_date = Column(DateTime, nullable=True)
+    result_printed_date = Column(DateTime, nullable=True)
+    doctor = Column(String, nullable=True)
+    laboratory = Column(String, nullable=True)
+    
     # Основные показатели крови
-    hemoglobin = Column(Float, nullable=True)
-    white_blood_cells = Column(Float, nullable=True)
-    red_blood_cells = Column(Float, nullable=True)
-    platelets = Column(Float, nullable=True)
+    hemoglobin = Column(Float, nullable=True)  # г/л
+    white_blood_cells = Column(Float, nullable=True)  # тыс/мкл (Лейкоциты)
+    red_blood_cells = Column(Float, nullable=True)  # млн/мкл (Эритроциты)
+    platelets = Column(Float, nullable=True)  # тыс/мкл (Тромбоциты)
+    hematocrit = Column(Float, nullable=True)  # % (Гематокрит)
+    
+    # Эритроцитарные индексы
+    mcv = Column(Float, nullable=True)  # фл (Средний объем эритроцита)
+    mch = Column(Float, nullable=True)  # пг (Среднее содержание гемоглобина в эритроците)
+    mchc = Column(Float, nullable=True)  # г/дл (Средняя концентрация гемоглобина в эритроците)
+    rdw = Column(Float, nullable=True)  # % (Ширина распределения эритроцитов)
     
     # Нейтрофилы
     neutrophils_percent = Column(Float, nullable=True)
@@ -43,22 +63,24 @@ class BloodTestRecord(Base):
     basophils_percent = Column(Float, nullable=True)
     basophils_absolute = Column(Float, nullable=True)
     
+    # СОЭ
+    esr = Column(Float, nullable=True)  # мм/ч (Скорость оседания эритроцитов)
+    
     # SII расчет
     sii_value = Column(Float, nullable=True)
     sii_level = Column(String, nullable=True)
     sii_interpretation = Column(Text, nullable=True)
     
-    # Метаданные
-    cancer_type = Column(String, nullable=True)
-    lab_name = Column(String, nullable=True)
-    test_date = Column(DateTime, nullable=True)
-    
     # Системные поля
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Дополнительные данные в JSON формате
-    additional_data = Column(JSON, nullable=True)
+    # Дополнительные данные в JSON формате (все аналиты с единицами и референсными значениями)
+    analytes_data = Column(JSON, nullable=True)
+    
+    # Метаданные файла
+    source_filename = Column(String, nullable=True)
+    processing_session_id = Column(String, nullable=True)
 
 
 class UserProfile(Base):
