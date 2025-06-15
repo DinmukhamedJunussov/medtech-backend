@@ -32,9 +32,21 @@ jobs:
       
       - name: Test with pytest and generate coverage
         run: |
-          python -m pytest tests/ --cov=src --cov-report=xml --cov-report=html --cov-report=term-missing -v
+          python -m pytest tests/ --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing -v
         env:
           PYTHONPATH: ${{ github.workspace }}
+          SUPABASE_URL: postgresql://test:test@localhost:5432/test
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+          OPENAI_API_KEY: test
+          APP_SECRET: 12345678901234567890123456789012
+          CORS_WHITELIST: '["http://localhost:3000"]'
+          DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/test
+          PORT: 8000
+          LLAMA_CLOUD_API_KEY: test
+          QDRANT_URL: http://localhost:6333
+          QDRANT_API_KEY: test
       
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

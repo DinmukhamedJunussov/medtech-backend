@@ -1,6 +1,14 @@
 import os
 import pytest
 
+# Устанавливаем тестовые переменные окружения перед импортом
+os.environ.setdefault("SUPABASE_URL", "postgresql://test:test@localhost:5432/test")
+os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
+os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
+os.environ.setdefault("AWS_REGION", "us-east-1")
+os.environ.setdefault("OPENAI_API_KEY", "test")
+os.environ.setdefault("APP_SECRET", "12345678901234567890123456789012")
+
 from app.services.helper import extract_cbc_values, detect_lab_type
 
 class TestBloodParserHelper:

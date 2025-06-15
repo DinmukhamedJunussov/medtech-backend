@@ -6,6 +6,20 @@ from fastapi.testclient import TestClient
 # Добавляем корневую директорию проекта в PYTHONPATH
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+# Устанавливаем тестовые переменные окружения перед импортом приложения
+os.environ.setdefault("SUPABASE_URL", "postgresql://test:test@localhost:5432/test")
+os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
+os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
+os.environ.setdefault("AWS_REGION", "us-east-1")
+os.environ.setdefault("OPENAI_API_KEY", "test")
+os.environ.setdefault("APP_SECRET", "12345678901234567890123456789012")
+os.environ.setdefault("CORS_WHITELIST", '["http://localhost:3000"]')
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://test:test@localhost:5432/test")
+os.environ.setdefault("PORT", "8000")
+os.environ.setdefault("LLAMA_CLOUD_API_KEY", "test")
+os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
+os.environ.setdefault("QDRANT_API_KEY", "test")
+
 # Импортируем app из main.py (который использует новую архитектуру)
 from app.main import app
 

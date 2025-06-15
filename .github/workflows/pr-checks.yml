@@ -24,11 +24,11 @@ jobs:
       
       - name: Lint with flake8
         run: |
-          flake8 src/ tests/
+          flake8 app/ tests/
       
       - name: Type check with mypy
         run: |
-          mypy src/
+          mypy app/
   
   frontend-lint:
     runs-on: ubuntu-latest
