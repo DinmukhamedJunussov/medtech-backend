@@ -21,8 +21,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     
     # Инициализация базы данных
     try:
-        from app.database import init_db
-        await init_db()
+        # from app.database import init_db
+        # await init_db()
         logger.info("✅ Database initialized successfully")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {e}")
@@ -32,8 +32,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Инициализация сервисов
     try:
         # from app.services.postgres import postgres_service, PostgresService
-        from app.services.llm import llm_service, LLMService
-        from app.services.qdrant import qdrant_service
+        # from app.services.llm import llm_service, LLMService
+        # from app.services.qdrant import qdrant_service
         
         # # Инициализация PostgreSQL сервиса
         # if postgres_service is None:
@@ -42,7 +42,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         
       
         # Инициализация Qdrant сервиса
-        await qdrant_service.connect()
+        # await qdrant_service.connect()
         
         logger.info("All services initialized successfully")
     except Exception as e:
@@ -53,13 +53,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Закрытие соединений
     logger.info("MedTech API shutting down...")
     try:
-        from app.database import close_db
-        await close_db()
-        
+        # from app.database import close_db
+        # await close_db()
+        #
         # if postgres_service:
         #     await postgres_service.close()
-        
-        await qdrant_service.close()
+        #
+        # await qdrant_service.close()
         
         logger.info("All connections closed successfully")
     except Exception as e:
