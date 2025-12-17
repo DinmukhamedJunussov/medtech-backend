@@ -104,8 +104,10 @@ def setup_cors(app: FastAPI) -> None:
         "https://api.oncotest.kz",
         "https://preview--health-score-reveal.lovable.app",
         "https://health-score-reveal.lovable.app",
+        "https://medicalgpt.lovable.app",
         "http://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
-        "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com"
+        "https://medtech-backend-alb-988383858.us-east-1.elb.amazonaws.com",
+        "https://*.lovable.app"
     ]
     
     app.add_middleware(
