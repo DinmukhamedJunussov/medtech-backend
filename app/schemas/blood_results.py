@@ -1,11 +1,158 @@
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 import random
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 from enum import Enum, IntEnum
-from pydantic import BaseModel, Field
+
+
+# ============================================================================
+# Blood Test Parsing Response Models
+# ============================================================================
+
+class AnalyteResult(BaseModel):
+    """Single analyte result with value and reference range"""
+    value: Optional[float] = Field(None, description="Numeric result value")
+    ref: Optional[str] = Field(None, description="Reference range (e.g., '120-160', '< 15')")
+
+
+class ParsedBloodTestResponse(BaseModel):
+    """
+    Complete response from blood test PDF parsing.
+    Contains patient info and all extracted analyte results.
+    """
+    # Patient info
+    full_name: Optional[str] = Field(None, description="Patient's full name")
+    age: Optional[int] = Field(None, description="Patient's age")
+    sex: Optional[str] = Field(None, description="Patient's sex")
+    date: Optional[str] = Field(None, description="Test date")
+    
+    # CBC / General Blood Test
+    hemoglobin: Optional[AnalyteResult] = Field(None, description="Гемоглобин (HGB)")
+    erythrocytes: Optional[AnalyteResult] = Field(None, description="Эритроциты (RBC)")
+    mcv: Optional[AnalyteResult] = Field(None, description="Mean Corpuscular Volume")
+    rdw: Optional[AnalyteResult] = Field(None, description="Red Cell Distribution Width")
+    mch: Optional[AnalyteResult] = Field(None, description="Mean Corpuscular Hemoglobin")
+    mchc: Optional[AnalyteResult] = Field(None, description="Mean Corpuscular Hemoglobin Concentration")
+    hematocrit: Optional[AnalyteResult] = Field(None, description="Гематокрит")
+    platelets: Optional[AnalyteResult] = Field(None, description="Тромбоциты (PLT)")
+    wbc: Optional[AnalyteResult] = Field(None, description="Лейкоциты (WBC)")
+    esr: Optional[AnalyteResult] = Field(None, description="СОЭ (ESR)")
+    
+    # WBC Differential (percent)
+    neutrophils: Optional[AnalyteResult] = Field(None, description="Нейтрофилы %")
+    band_neutrophils: Optional[AnalyteResult] = Field(None, description="Палочкоядерные нейтрофилы")
+    segmented_neutrophils: Optional[AnalyteResult] = Field(None, description="Сегментоядерные нейтрофилы")
+    lymphocytes: Optional[AnalyteResult] = Field(None, description="Лимфоциты %")
+    monocytes: Optional[AnalyteResult] = Field(None, description="Моноциты %")
+    eosinophils: Optional[AnalyteResult] = Field(None, description="Эозинофилы %")
+    basophils: Optional[AnalyteResult] = Field(None, description="Базофилы %")
+    
+    # WBC Differential (absolute)
+    neutrophils_abs: Optional[AnalyteResult] = Field(None, description="Нейтрофилы абс.")
+    lymphocytes_abs: Optional[AnalyteResult] = Field(None, description="Лимфоциты абс.")
+    monocytes_abs: Optional[AnalyteResult] = Field(None, description="Моноциты абс.")
+    eosinophils_abs: Optional[AnalyteResult] = Field(None, description="Эозинофилы абс.")
+    basophils_abs: Optional[AnalyteResult] = Field(None, description="Базофилы абс.")
+    
+    # Biochemistry
+    glucose: Optional[AnalyteResult] = Field(None, description="Глюкоза")
+    protein_total: Optional[AnalyteResult] = Field(None, description="Общий белок")
+    albumin: Optional[AnalyteResult] = Field(None, description="Альбумин")
+    urea: Optional[AnalyteResult] = Field(None, description="Мочевина")
+    creatinine: Optional[AnalyteResult] = Field(None, description="Креатинин")
+    uric_acid: Optional[AnalyteResult] = Field(None, description="Мочевая кислота")
+    bilirubin_total: Optional[AnalyteResult] = Field(None, description="Общий билирубин")
+    bilirubin_direct: Optional[AnalyteResult] = Field(None, description="Прямой билирубин")
+    bilirubin_indirect: Optional[AnalyteResult] = Field(None, description="Непрямой билирубин")
+    alt: Optional[AnalyteResult] = Field(None, description="АЛТ")
+    ast: Optional[AnalyteResult] = Field(None, description="АСТ")
+    alkaline_phosphatase: Optional[AnalyteResult] = Field(None, description="Щелочная фосфатаза")
+    ggt: Optional[AnalyteResult] = Field(None, description="ГГТП")
+    ldh: Optional[AnalyteResult] = Field(None, description="ЛДГ")
+    
+    # Lipid Panel
+    cholesterol: Optional[AnalyteResult] = Field(None, description="Холестерин")
+    hdl_cholesterol: Optional[AnalyteResult] = Field(None, description="ЛПВП")
+    ldl_cholesterol: Optional[AnalyteResult] = Field(None, description="ЛПНП")
+    triglycerides: Optional[AnalyteResult] = Field(None, description="Триглицериды")
+    
+    # Electrolytes
+    calcium_total: Optional[AnalyteResult] = Field(None, description="Кальций общий")
+    potassium: Optional[AnalyteResult] = Field(None, description="Калий")
+    sodium: Optional[AnalyteResult] = Field(None, description="Натрий")
+    chlorides: Optional[AnalyteResult] = Field(None, description="Хлориды")
+    phosphorus: Optional[AnalyteResult] = Field(None, description="Фосфор")
+    magnesium: Optional[AnalyteResult] = Field(None, description="Магний")
+    
+    # Coagulation
+    prothrombin_time: Optional[AnalyteResult] = Field(None, description="Протромбиновое время")
+    prothrombin_quick: Optional[AnalyteResult] = Field(None, description="Протромбин по Квику")
+    inr: Optional[AnalyteResult] = Field(None, description="МНО")
+    aptt: Optional[AnalyteResult] = Field(None, description="АЧТВ")
+    fibrinogen: Optional[AnalyteResult] = Field(None, description="Фибриноген")
+    thrombin_time: Optional[AnalyteResult] = Field(None, description="Тромбиновое время")
+    antithrombin_iii: Optional[AnalyteResult] = Field(None, description="Антитромбин III")
+    d_dimer: Optional[AnalyteResult] = Field(None, description="D-димер")
+    
+    # Immunology
+    crp: Optional[AnalyteResult] = Field(None, description="С-реактивный белок")
+    rheumatoid_factor: Optional[AnalyteResult] = Field(None, description="Ревматоидный фактор")
+    
+    # Hormones
+    b_hcg_total: Optional[AnalyteResult] = Field(None, description="b-ХГЧ общий")
+    tsh: Optional[AnalyteResult] = Field(None, description="ТТГ")
+    t3: Optional[AnalyteResult] = Field(None, description="Т3")
+    t4: Optional[AnalyteResult] = Field(None, description="Т4")
+    prolactin: Optional[AnalyteResult] = Field(None, description="Пролактин")
+    lh: Optional[AnalyteResult] = Field(None, description="ЛГ")
+    fsh: Optional[AnalyteResult] = Field(None, description="ФСГ")
+    estradiol: Optional[AnalyteResult] = Field(None, description="Эстрадиол")
+    testosterone: Optional[AnalyteResult] = Field(None, description="Тестостерон")
+    cortisol: Optional[AnalyteResult] = Field(None, description="Кортизол")
+    
+    # Extended
+    reticulocytes: Optional[AnalyteResult] = Field(None, description="Ретикулоциты")
+    thrombocrit: Optional[AnalyteResult] = Field(None, description="Тромбокрит")
+    mpv: Optional[AnalyteResult] = Field(None, description="Средний объем тромбоцитов")
+    folic_acid: Optional[AnalyteResult] = Field(None, description="Фолиевая кислота")
+    
+    # Vitamins
+    vitamin_d: Optional[AnalyteResult] = Field(None, description="Витамин D")
+    vitamin_a: Optional[AnalyteResult] = Field(None, description="Витамин A")
+    vitamin_b1: Optional[AnalyteResult] = Field(None, description="Витамин B1")
+    vitamin_b2: Optional[AnalyteResult] = Field(None, description="Витамин B2")
+    vitamin_b3: Optional[AnalyteResult] = Field(None, description="Витамин B3")
+    vitamin_b5: Optional[AnalyteResult] = Field(None, description="Витамин B5")
+    vitamin_b6: Optional[AnalyteResult] = Field(None, description="Витамин B6")
+    vitamin_b7: Optional[AnalyteResult] = Field(None, description="Витамин B7")
+    vitamin_b9: Optional[AnalyteResult] = Field(None, description="Витамин B9")
+    vitamin_b12: Optional[AnalyteResult] = Field(None, description="Витамин B12")
+    vitamin_c: Optional[AnalyteResult] = Field(None, description="Витамин C")
+    vitamin_e: Optional[AnalyteResult] = Field(None, description="Витамин E")
+    vitamin_k: Optional[AnalyteResult] = Field(None, description="Витамин K")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "full_name": "ДЖУНУСОВ ДИНМУХАМЕД САИНҰЛЫ",
+                "age": 31,
+                "sex": "Мужской",
+                "date": "01.06.2024",
+                "hemoglobin": {"value": 165.0, "ref": "132 - 173"},
+                "erythrocytes": {"value": 5.3, "ref": "4.30 - 5.70"},
+                "wbc": {"value": 5.98, "ref": "4.50 - 11.00"},
+                "platelets": {"value": 326.0, "ref": "150 - 400"},
+                "glucose": None
+            }
+        }
+    }
+
+
+# ============================================================================
+# SII (Systemic Immune-Inflammation Index) Models
+# ============================================================================
 
 class SIILevel(str, Enum):
     very_low = "🔴 Очень низкий"

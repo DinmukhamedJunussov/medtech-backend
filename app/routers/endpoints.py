@@ -1,7 +1,7 @@
 """
 API эндпоинты для MedTech приложения
 """
-import ast
+import json
 import os
 from typing import Dict, Any, Union
 from fastapi import APIRouter, File, HTTPException, UploadFile, Depends
@@ -10,7 +10,7 @@ from loguru import logger
 import time
 
 from app.core.exceptions import handle_medtech_exception, MedTechException
-from app.schemas.blood_results import BloodTestResults, SIIResult
+from app.schemas.blood_results import BloodTestResults, SIIResult, ParsedBloodTestResponse, AnalyteResult
 from app.schemas.document_schemas import ParsedDocument, DocumentQuery, DocumentQueryResponse, ProcessedBloodTestDocument
 from app.schemas.user_uploads import BloodTestResults as BloodTestResultsSchema
 from app.services.document_processor import DocumentProcessor
@@ -22,8 +22,6 @@ from app.database import get_db
 from typing import List
 from app.utils.const import nazvaniya_analizov, nazvaniya_mapping
 from openai import OpenAI
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from llama_parse import LlamaParse
 
 router = APIRouter()
@@ -43,69 +41,194 @@ def read_root():
     }
 
 
-@router.post("/v3/blood-tests/upload-multiple-files")
+@router.post("/v3/blood-tests/upload-multiple-files", response_model=ParsedBloodTestResponse)
 async def parse_blood_test_v2(
     files: List[UploadFile] = File(...)
-):
-    # return {'hemoglobin': {'value': 165.0, 'ref': '132 - 173'}, 'erythrocytes': {'value': 5.3, 'ref': '4.30 - 5.70'}, 'mcv': {'value': 91.1, 'ref': '80.0 - 99.0'}, 'rdw': {'value': 11.8, 'ref': '11.6 - 14.8'}, 'mch': {'value': 31.1, 'ref': '27.0 - 34.0'}, 'mchc': {'value': 34.2, 'ref': '32.0 - 37.0'}, 'hematocrit': {'value': 48.3, 'ref': '39.0 - 49.0'}, 'platelets': {'value': 326.0, 'ref': '150 - 400'}, 'wbc': {'value': 5.98, 'ref': '4.50 - 11.00'}, 'esr': {'value': 9.0, 'ref': '< 15'}, 'neutrophils': {'value': 40.2, 'ref': '48.0 - 78.0'}, 'band_neutrophils': None, 'segmented_neutrophils': None, 'lymphocytes': {'value': 48.5, 'ref': '19.0 - 37.0'}, 'monocytes': {'value': 8.0, 'ref': '3.0 - 11.0'}, 'eosinophils': {'value': 3.0, 'ref': '1.0 - 5.0'}, 'basophils': {'value': 0.3, 'ref': '< 1.0'}, 'neutrophils_abs': {'value': 2.4, 'ref': '1.78 - 5.38'}, 'lymphocytes_abs': {'value': 2.9, 'ref': '1.32 - 3.57'}, 'monocytes_abs': {'value': 0.48, 'ref': '0.20 - 0.95'}, 'eosinophils_abs': {'value': 0.18, 'ref': '0.00 - 0.70'}, 'basophils_abs': {'value': 0.02, 'ref': '0.00 - 0.20'}, 'glucose': None, 'protein_total': None, 'albumin': None, 'urea': None, 'creatinine': None, 'uric_acid': None, 'bilirubin_total': None, 'bilirubin_direct': None, 'bilirubin_indirect': None, 'alt': None, 'ast': None, 'alkaline_phosphatase': None, 'ggt': None, 'ldh': None, 'cholesterol': None, 'hdl_cholesterol': None, 'ldl_cholesterol': None, 'triglycerides': None, 'calcium_total': None, 'potassium': None, 'sodium': None, 'chlorides': None, 'phosphorus': None, 'magnesium': None, 'prothrombin_time': None, 'prothrombin_quick': None, 'inr': None, 'aptt': None, 'fibrinogen': None, 'thrombin_time': None, 'antithrombin_iii': None, 'd_dimer': None, 'crp': None, 'rheumatoid_factor': None, 'b_hcg_total': None, 'tsh': None, 't3': None, 't4': None, 'prolactin': None, 'lh': None, 'fsh': None, 'estradiol': None, 'testosterone': None, 'cortisol': None, 'reticulocytes': None, 'thrombocrit': None, 'mpv': None, 'folic_acid': None, 'vitamin_d': None, 'vitamin_a': None, 'vitamin_b1': None, 'vitamin_b2': None, 'vitamin_b3': None, 'vitamin_b5': None, 'vitamin_b6': None, 'vitamin_b7': None, 'vitamin_b9': None, 'vitamin_b12': None, 'vitamin_c': None, 'vitamin_e': None, 'vitamin_k': None, 'full_name': 'ДЖУНУСОВ ДИНМУХАМЕД САИНҰЛЫ', 'age': 31, 'sex': 'Мужской', 'date': '01.06.2024'}
-    #
-    # return {'hemoglobin': {'value': 114.0, 'ref': '117 - 160'}, 'erythrocytes': {'value': 4.32, 'ref': '3.8 - 5.3'}, 'mcv': {'value': 78.2, 'ref': '80 - 100'}, 'rdw': None, 'mch': {'value': 26.4, 'ref': '26.5 - 33.5'}, 'mchc': {'value': 33.7, 'ref': '31 - 38'}, 'hematocrit': {'value': 33.8, 'ref': '> 35'}, 'platelets': {'value': 205.0, 'ref': '150 - 400'}, 'wbc': {'value': 4.6, 'ref': '4.5 - 11'}, 'esr': {'value': 36.0, 'ref': '< 23'}, 'neutrophils': {'value': 74.0, 'ref': '47 - 72'}, 'band_neutrophils': None, 'segmented_neutrophils': None, 'lymphocytes': {'value': 14.0, 'ref': '19 - 37'}, 'monocytes': {'value': 9.0, 'ref': '2 - 9'}, 'eosinophils': {'value': 2.0, 'ref': '< 5'}, 'basophils': {'value': 0.0, 'ref': '< 1.2'}, 'neutrophils_abs': {'value': 3.38, 'ref': '1.5 - 7'}, 'lymphocytes_abs': {'value': 0.66, 'ref': '1 - 4.8'}, 'monocytes_abs': {'value': 0.42, 'ref': '< 0.7'}, 'eosinophils_abs': {'value': 0.1, 'ref': '< 0.45'}, 'basophils_abs': {'value': 0.01, 'ref': '< 0.1'}, 'glucose': None, 'protein_total': None, 'albumin': None, 'urea': None, 'creatinine': None, 'uric_acid': None, 'bilirubin_total': None, 'bilirubin_direct': None, 'bilirubin_indirect': None, 'alt': None, 'ast': None, 'alkaline_phosphatase': None, 'ggt': None, 'ldh': None, 'cholesterol': None, 'hdl_cholesterol': None, 'ldl_cholesterol': None, 'triglycerides': None, 'calcium_total': None, 'potassium': None, 'sodium': None, 'chlorides': None, 'phosphorus': None, 'magnesium': None, 'prothrombin_time': None, 'prothrombin_quick': None, 'inr': None, 'aptt': None, 'fibrinogen': None, 'thrombin_time': None, 'antithrombin_iii': None, 'd_dimer': None, 'crp': None, 'rheumatoid_factor': None, 'b_hcg_total': None, 'tsh': None, 't3': None, 't4': None, 'prolactin': None, 'lh': None, 'fsh': None, 'estradiol': None, 'testosterone': None, 'cortisol': None, 'reticulocytes': None, 'thrombocrit': None, 'mpv': None, 'folic_acid': None, 'vitamin_d': None, 'vitamin_a': None, 'vitamin_b1': None, 'vitamin_b2': None, 'vitamin_b3': None, 'vitamin_b5': None, 'vitamin_b6': None, 'vitamin_b7': None, 'vitamin_b9': None, 'vitamin_b12': None, 'vitamin_c': None, 'vitamin_e': None, 'vitamin_k': None, 'full_name': 'ТУРГАНБАЕВА САГЫНГАН РЫСКУЛОВНА', 'age': 63, 'sex': 'Женский', 'date': '29.05.2025'}
-
+) -> ParsedBloodTestResponse:
+    """
+    Parse blood test PDF files using LlamaParse + OpenAI.
+    
+    Args:
+        files: List of uploaded PDF/image files with blood test results
+        
+    Returns:
+        ParsedBloodTestResponse: Structured blood test data with patient info and analyte values
+    """
+    # Validate API keys
     if not os.getenv("LLAMA_CLOUD_API_KEY"):
         raise HTTPException(status_code=500, detail="LLAMA_CLOUD_API_KEY is not set")
 
     if not os.getenv("OPENAI_API_KEY"):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
 
+    # Step 1: Parse all PDFs with LlamaParse
     contents = ""
     for file in files:
-        print(file.filename)
-        file_content = file.file.read()
+        logger.info(f"Processing file: {file.filename}")
+        file_content = await file.read()
+        
         parser = LlamaParse(result_type="markdown", language='ru')
         documents = await parser.aparse(file_content, extra_info={"file_name": file.filename})
-
-        contents += documents.get_markdown_documents()[0].text
-    # Записываем содержимое в файл для отладки
+        
+        contents += documents.get_markdown_documents()[0].text + "\n\n"
+    
+    # Debug: save parsed content
     with open("parsed_blood_test_contents.txt", "w", encoding="utf-8") as f:
         f.write(contents)
 
-    system_prompt = """You are a medical data parser. Extract full_name, age ("Жасы (Возраст):"), sex(Пол), date (Дата сдачи анализа) and also all analyte names ("названия анализов" or "Компонент"), their results ("результат" or "Нәтиже"), units ("единицы измерения"), and reference values ("Референс мағыналары(Референсные значения)") from the clinical blood test table(s) in the text.
-        Return a JSON dictionary mapping the Russian analyte name to a dictionary of 'value' (as float or str), 'units' (as str), and, where available, 'ref' (reference range as str).
-        If there is no analyte table or no blood test result, return an empty dictionary."""
+    # Step 2: Extract data with OpenAI (using JSON mode)
+    system_prompt = """You are a medical laboratory data extraction specialist. Your task is to parse blood test results from clinical documents and extract numeric values with their reference ranges.
 
-    user_prompt = f"""
-    В данном тексте в формате markdown содержатся таблицы с результатами лабораторных анализов на русском и казахском языках.
-    Найди для каждого анализа из этого списка: {nazvaniya_analizov} -- значение "Результат" из текста (всегда числовое!),
-    если такого анализа нет в тексте, верни None для этого ключа. Верни только Python словарь, ключи — из этого списка, значения — найденное значение (или None) и Референсные значения. Также full_name, age (всегда числовое!), sex(Пол: Мужской или Женский), and date (Дата сдачи анализа).
-    Текст: '''{contents}'''
-    """
+IMPORTANT PARSING RULES:
+1. Values like "HGB 174 г/л" mean the value is 174
+2. Values like "WBC 6,13 *10^9/л" mean the value is 6.13 (note: comma is decimal separator)
+3. Values like "NEU% 41,0 %" mean the value is 41.0
+4. Reference ranges like "130 - 160" should be kept as string "130 - 160"
+5. If a test row has no value (empty), set value to null
+6. Calculate age from birth date if not directly provided
 
+Return a valid JSON object. Use ENGLISH keys as specified."""
 
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
+    user_prompt = f"""Extract blood test data from this clinical document.
 
-    response = client.chat.completions.create(
-        model="gpt-4.1",  # или "gpt-3.5-turbo", если нет доступа к gpt-4
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    # print(type(response.choices[0].message.content))
-    answer_str = response.choices[0].message.content.strip()
-    answer = ast.literal_eval(answer_str)
+DOCUMENT:
+{contents}
 
-    final = {}
-    for value in nazvaniya_analizov:
-        final[nazvaniya_mapping[value]] = answer.get(value, None)
-    final["full_name"] = answer['full_name']
-    final["age"] = answer['age']
-    final["sex"] = answer['sex']
-    final["date"] = answer['date']
-    print(final)
+REQUIRED OUTPUT FORMAT (use these EXACT English field names):
+{{
+    "full_name": "<patient full name>",
+    "age": <integer age>,
+    "sex": "Мужской" or "Женский",
+    "date": "<test date in DD.MM.YYYY>",
+    "hemoglobin": {{"value": <number>, "ref": "<range>"}},
+    "erythrocytes": {{"value": <number>, "ref": "<range>"}},
+    "hematocrit": {{"value": <number>, "ref": "<range>"}},
+    "mcv": {{"value": <number>, "ref": "<range>"}},
+    "mch": {{"value": <number>, "ref": "<range>"}},
+    "mchc": {{"value": <number>, "ref": "<range>"}},
+    "rdw": {{"value": <number>, "ref": "<range>"}},
+    "platelets": {{"value": <number>, "ref": "<range>"}},
+    "wbc": {{"value": <number>, "ref": "<range>"}},
+    "neutrophils": {{"value": <number>, "ref": "<range>"}},
+    "neutrophils_abs": {{"value": <number>, "ref": "<range>"}},
+    "lymphocytes": {{"value": <number>, "ref": "<range>"}},
+    "lymphocytes_abs": {{"value": <number>, "ref": "<range>"}},
+    "monocytes": {{"value": <number>, "ref": "<range>"}},
+    "monocytes_abs": {{"value": <number>, "ref": "<range>"}},
+    "eosinophils": {{"value": <number>, "ref": "<range>"}},
+    "eosinophils_abs": {{"value": <number>, "ref": "<range>"}},
+    "basophils": {{"value": <number>, "ref": "<range>"}},
+    "basophils_abs": {{"value": <number>, "ref": "<range>"}},
+    "esr": {{"value": <number or null>, "ref": "<range>"}},
+    "thrombocrit": {{"value": <number>, "ref": "<range>"}},
+    "mpv": {{"value": <number>, "ref": "<range>"}},
+    "glucose": {{"value": <number or null>, "ref": "<range or null>"}},
+    "cholesterol": {{"value": <number or null>, "ref": "<range or null>"}},
+    "hdl_cholesterol": {{"value": <number or null>, "ref": "<range or null>"}},
+    "ldl_cholesterol": {{"value": <number or null>, "ref": "<range or null>"}},
+    "triglycerides": {{"value": <number or null>, "ref": "<range or null>"}},
+    "creatinine": {{"value": <number or null>, "ref": "<range or null>"}}
+}}
 
-    return final
+MAPPING from Russian document to English keys:
+- Гемоглобин → hemoglobin
+- Эритроциты → erythrocytes  
+- Гематокрит → hematocrit
+- Средний объем эритроцита / MCV → mcv
+- Среднее содержание Hb в эритроците / MCH → mch
+- Средняя концентрация Hb в эритроците / MCHC → mchc
+- Распределение эритроцитов по объему / RDW → rdw
+- Тромбоциты → platelets
+- Лейкоциты → wbc
+- Нейтрофилы (%) → neutrophils
+- Нейтрофилы (абс.) → neutrophils_abs
+- Лимфоциты (%) → lymphocytes
+- Лимфоциты (абс.) → lymphocytes_abs
+- Моноциты (%) → monocytes
+- Моноциты (абс.) → monocytes_abs
+- Эозинофилы (%) → eosinophils
+- Эозинофилы (абс.) → eosinophils_abs
+- Базофилы (%) → basophils
+- Базофилы (абс.) → basophils_abs
+- СОЭ → esr
+- Тромбокрит → thrombocrit
+- Средний объем тромбоцита / MPV → mpv
+
+For values not found in the document, use null.
+Parse numeric values carefully - commas are decimal separators (6,13 = 6.13).
+
+Return ONLY the JSON object, no additional text."""
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1
+        )
+        
+        answer_str = response.choices[0].message.content.strip()
+        logger.info(f"OpenAI raw response: {answer_str[:500]}...")  # Log first 500 chars
+        answer = json.loads(answer_str)
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse LLM response")
+    except Exception as e:
+        logger.error(f"OpenAI API error: {e}")
+        raise HTTPException(status_code=500, detail=f"LLM processing error: {str(e)}")
+
+    # Step 3: Build response with proper typing
+    # OpenAI now returns English keys directly, so we just need to validate and structure
+    response_data: Dict[str, Any] = {}
+    
+    # Get all possible English keys from the mapping
+    all_english_keys = set(nazvaniya_mapping.values())
+    
+    for english_key in all_english_keys:
+        value = answer.get(english_key)
+        
+        if value is not None and isinstance(value, dict):
+            # Extract numeric value, handling potential string numbers
+            raw_value = value.get("value")
+            numeric_value = None
+            if raw_value is not None:
+                try:
+                    numeric_value = float(raw_value) if raw_value != "" else None
+                except (ValueError, TypeError):
+                    numeric_value = None
+            
+            response_data[english_key] = AnalyteResult(
+                value=numeric_value,
+                ref=value.get("ref", "")
+            )
+        else:
+            response_data[english_key] = None
+    
+    # Add patient info
+    response_data["full_name"] = answer.get("full_name", "")
+    
+    # Handle age - could be int or need calculation from birth date
+    age_value = answer.get("age")
+    if isinstance(age_value, int):
+        response_data["age"] = age_value
+    elif isinstance(age_value, str) and age_value.isdigit():
+        response_data["age"] = int(age_value)
+    else:
+        response_data["age"] = 0
+        
+    response_data["sex"] = answer.get("sex", "")
+    response_data["date"] = answer.get("date", "")
+    
+    logger.info(f"Successfully parsed blood test for: {response_data.get('full_name')}")
+    logger.info(f"Response data: {response_data}")
+    
+    return ParsedBloodTestResponse(**response_data)
 
 @router.post("/parse-blood-test", response_model=BloodTestResults)
 async def parse_blood_test(file: UploadFile = File(...)):
