@@ -63,14 +63,17 @@ async def parse_blood_test_v2(
 
     # Step 1: Parse all PDFs with LlamaParse
     contents = ""
+    parser = LlamaParse(result_type="text", language='ru')
+    
     for file in files:
         logger.info(f"Processing file: {file.filename}")
         file_content = await file.read()
         
-        parser = LlamaParse(result_type="markdown", language='ru')
         documents = await parser.aparse(file_content, extra_info={"file_name": file.filename})
+        text_docs = documents.get_text_documents()
         
-        contents += documents.get_markdown_documents()[0].text + "\n\n"
+        if text_docs:
+            contents += text_docs[0].text + "\n\n"
     
     # Debug: save parsed content
     with open("parsed_blood_test_contents.txt", "w", encoding="utf-8") as f:
