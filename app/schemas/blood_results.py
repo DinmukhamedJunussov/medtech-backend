@@ -11,10 +11,18 @@ from enum import Enum, IntEnum
 # Blood Test Parsing Response Models
 # ============================================================================
 
+class AnalyteStatus(str, Enum):
+    """Status of analyte value relative to reference range"""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
 class AnalyteResult(BaseModel):
     """Single analyte result with value and reference range"""
     value: Optional[float] = Field(None, description="Numeric result value")
     ref: Optional[str] = Field(None, description="Reference range (e.g., '120-160', '< 15')")
+    status: Optional[AnalyteStatus] = Field(None, description="Status: low, normal, or high")
 
 
 class ParsedBloodTestResponse(BaseModel):

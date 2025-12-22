@@ -10,7 +10,7 @@ from loguru import logger
 import time
 
 from app.core.exceptions import handle_medtech_exception, MedTechException
-from app.schemas.blood_results import BloodTestResults, SIIResult, ParsedBloodTestResponse, AnalyteResult
+from app.schemas.blood_results import BloodTestResults, SIIResult, ParsedBloodTestResponse, AnalyteResult, AnalyteStatus
 from app.schemas.document_schemas import ParsedDocument, DocumentQuery, DocumentQueryResponse, ProcessedBloodTestDocument
 from app.schemas.user_uploads import BloodTestResults as BloodTestResultsSchema
 from app.services.document_processor import DocumentProcessor
@@ -29,6 +29,74 @@ router = APIRouter()
 # Инициализируем сервисы
 document_processor = DocumentProcessor()
 sii_calculator = SIICalculator()
+
+
+def parse_reference_range(ref: str) -> tuple[float | None, float | None]:
+    """
+    Parse reference range string to min/max values.
+    Handles formats like: '130 - 160', '130-160', '< 15', '> 5', '4,00 - 5,00'
+    
+    Returns:
+        Tuple of (min_value, max_value). None if cannot be parsed.
+    """
+    if not ref:
+        return None, None
+    
+    ref = ref.strip()
+    
+    # Handle "< X" format (upper limit only)
+    if ref.startswith('<'):
+        try:
+            max_val = float(ref[1:].strip().replace(',', '.'))
+            return None, max_val
+        except ValueError:
+            return None, None
+    
+    # Handle "> X" format (lower limit only)
+    if ref.startswith('>'):
+        try:
+            min_val = float(ref[1:].strip().replace(',', '.'))
+            return min_val, None
+        except ValueError:
+            return None, None
+    
+    # Handle "X - Y" or "X-Y" format
+    separators = [' - ', '-', '–', '—']
+    for sep in separators:
+        if sep in ref:
+            parts = ref.split(sep)
+            if len(parts) == 2:
+                try:
+                    min_val = float(parts[0].strip().replace(',', '.'))
+                    max_val = float(parts[1].strip().replace(',', '.'))
+                    return min_val, max_val
+                except ValueError:
+                    continue
+    
+    return None, None
+
+
+def calculate_status(value: float | None, ref: str | None) -> AnalyteStatus | None:
+    """
+    Calculate analyte status based on value and reference range.
+    
+    Returns:
+        AnalyteStatus.LOW, AnalyteStatus.NORMAL, AnalyteStatus.HIGH, or None
+    """
+    if value is None or ref is None:
+        return None
+    
+    min_val, max_val = parse_reference_range(ref)
+    
+    if min_val is None and max_val is None:
+        return None
+    
+    if min_val is not None and value < min_val:
+        return AnalyteStatus.LOW
+    elif max_val is not None and value > max_val:
+        return AnalyteStatus.HIGH
+    else:
+        return AnalyteStatus.NORMAL
 
 
 @router.get("/")
@@ -206,9 +274,13 @@ Return ONLY the JSON object, no additional text."""
                 except (ValueError, TypeError):
                     numeric_value = None
             
+            ref_value = value.get("ref", "")
+            status = calculate_status(numeric_value, ref_value)
+            
             response_data[english_key] = AnalyteResult(
                 value=numeric_value,
-                ref=value.get("ref", "")
+                ref=ref_value,
+                status=status
             )
         else:
             response_data[english_key] = None
